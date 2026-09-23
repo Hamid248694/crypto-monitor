@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔔 Crypto Auto-Monitor</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --txt:#e6edf3; --dim:#8b949e;
+          --green:#3fb950; --red:#f85149; --yellow:#d29922; --blue:#58a6ff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; padding:12px; max-width:720px; margin:0 auto; }
+  h1 { font-size:1.15rem; display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .sub { color:var(--dim); font-size:.75rem; margin-bottom:12px; }
+  .bar { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  input,button,select { background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:.9rem; }
+  input#coinIn { width:110px; text-transform:uppercase; }
+  button { cursor:pointer; }
+  button.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; font-weight:600; }
+  button.warn { background:var(--yellow); border-color:var(--yellow); color:#000; font-weight:600; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .row1 { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .cname { font-weight:700; font-size:1.05rem; }
+  .price { font-size:1.05rem; font-variant-numeric:tabular-nums; }
+  .chg { font-size:.8rem; padding:2px 8px; border-radius:10px; }
+  .chg.up { background:rgba(63,185,80,.15); color:var(--green); }
+  .chg.dn { background:rgba(248,81,73,.15); color:var(--red); }
+  .badge { font-size:.75rem; font-weight:700; padding:3px 10px; border-radius:10px; }
+  .b-buy { background:rgba(63,185,80,.2); color:var(--green); }
+  .b-sell{ background:rgba(248,81,73,.2); color:var(--red); }
+  .b-wait{ background:rgba(139,148,158,.2); color:var(--dim); }
+  .b-bull{ background:rgba(210,153,34,.2); color:var(--yellow); }
+  .lvls { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center; }
+  .lvls input { width:96px; font-size:.8rem; padding:6px 8px; }
+  .lvls label { font-size:.72rem; color:var(--dim); }
+  .del { background:none; border:none; color:var(--dim); font-size:1rem; padding:4px; }
+  .meta { color:var(--dim); font-size:.72rem; margin-top:6px; }
+  #log { font-size:.75rem; color:var(--dim); max-height:150px; overflow-y:auto; }
+  #log div { padding:3px 0; border-bottom:1px dashed var(--line); }
+  .stat { font-size:.72rem; color:var(--dim); text-align:right; }
+  .plan { display:flex; flex-direction:column; gap:3px; margin-top:8px; padding:8px 10px;
+          border-radius:8px; font-size:.8rem; }
+  .plan-buy { background:rgba(63,185,80,.08); border:1px solid rgba(63,185,80,.3); }
+  .plan-sell{ background:rgba(248,81,73,.08); border:1px solid rgba(248,81,73,.3); }
+  .why { margin-top:8px; padding:8px 10px; background:rgba(88,166,255,.06);
+         border:1px solid rgba(88,166,255,.25); border-radius:8px; font-size:.78rem; }
+  .why ul { margin:4px 0 0 16px; }
+  .why li { margin-bottom:3px; line-height:1.35; }
+  .ctx { margin-top:8px; padding:8px 10px; background:rgba(210,153,34,.07);
+         border:1px solid rgba(210,153,34,.3); border-radius:8px; font-size:.78rem; }
+  .ctx ul { margin:4px 0 0 16px; }
+  .ctx li { margin-bottom:3px; line-height:1.35; }
+  .anote { margin-top:8px; padding:8px 10px; background:rgba(63,185,80,.07);
+           border:1px solid rgba(63,185,80,.3); border-radius:8px; font-size:.78rem; line-height:1.4; }
+  .aplan { margin-top:8px; padding:8px 10px; background:rgba(163,113,247,.08);
+           border:1px solid rgba(163,113,247,.35); border-radius:8px; font-size:.78rem; }
+  .aplan ul { margin:4px 0 0 16px; }
+  .aplan li { margin-bottom:3px; line-height:1.4; }
+  .lvlbox { margin-top:8px; padding:8px 10px; background:rgba(240,246,252,.04);
+            border:1px solid var(--line); border-radius:8px; font-size:.78rem; }
+  .whale { margin-top:8px; padding:8px 10px; background:rgba(56,139,253,.07);
+           border:1px solid rgba(56,139,253,.35); border-radius:8px; font-size:.78rem; }
+  .posbox { margin-top:8px; padding:8px 10px; background:rgba(255,166,87,.07);
+            border:1px solid rgba(255,166,87,.35); border-radius:8px; font-size:.78rem; }
+  .topbox { margin-top:8px; padding:8px 10px; border-radius:8px; font-size:.78rem; }
+  .tc-run  { background:rgba(63,185,80,.07); border:1px solid rgba(63,185,80,.35); }
+  .tc-near { background:rgba(210,153,34,.1); border:1px solid rgba(210,153,34,.45); }
+  .tc-done { background:rgba(248,81,73,.1); border:1px solid rgba(248,81,73,.45); }
+  .lvlrow { margin-top:4px; line-height:1.4; }
+  .lvlrow.liqup { color:#7ee787; }
+  .lvlrow.liqdn { color:#ffa198; }
+  .dim { color:var(--dim); font-size:.7rem; }
+  #mood { margin-bottom:12px; padding:10px 12px; background:rgba(88,166,255,.08);
+          border:1px solid rgba(88,166,255,.3); border-radius:10px; font-size:.8rem; line-height:1.4; }
+  .tabs { display:flex; gap:6px; margin-bottom:8px; }
+  .tab { flex:1; padding:10px 6px; font-size:.85rem; font-weight:700; border-radius:10px;
+         background:var(--card); border:1px solid var(--line); color:var(--dim); }
+  .tab.active[data-tab="all"]   { background:rgba(88,166,255,.15); color:var(--blue); border-color:var(--blue); }
+  .tab.active[data-tab="long"]  { background:rgba(63,185,80,.15); color:var(--green); border-color:var(--green); }
+  .tab.active[data-tab="short"] { background:rgba(248,81,73,.15); color:var(--red); border-color:var(--red); }
+  .tabinfo { font-size:.72rem; color:var(--dim); margin-bottom:10px; line-height:1.4; }
+  .flash { animation: fl 1s ease 3; }
+  @keyframes fl { 0%,100%{background:var(--card)} 50%{background:#3a2d00} }
+</style>
+</head>
+<body>
+<h1>🔔 Crypto Auto-Monitor <span id="dot" style="font-size:.7rem;color:var(--red)">●</span></h1>
+<div class="sub">OKX + Gate live data · har 12 sec price · har 3 min signal · alert = notification + awaaz</div>
+
+<div class="bar">
+  <input id="coinIn" placeholder="COIN (SYN)" maxlength="12">
+  <button class="primary" onclick="addCoin()">+ Add</button>
+  <button class="warn" id="notifBtn" onclick="askNotif()">🔔 Notification ON karo</button>
+</div>
+
+<div id="mood">🧠 Agent brain load ho raha...</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="all" onclick="setTab('all')">📋 ALL</button>
+  <button class="tab" data-tab="long" onclick="setTab('long')">🟢 LONG side</button>
+  <button class="tab" data-tab="short" onclick="setTab('short')">🔴 SHORT side</button>
+</div>
+<div id="tabinfo" class="tabinfo"></div>
+
+<div id="list"></div>
+
+<div class="card">
+  <b style="font-size:.85rem">📜 Alert history</b>
+  <div id="log"></div>
+</div>
+<div class="stat" id="stat">--</div>
+
+<script>
+const OKX="https://www.okx.com/api/v5", GATE="https://api.gateio.ws/api/v4";
+let coins = JSON.parse(localStorage.getItem("coins")||'null') ||
+  [{c:"SYN",hi:null,lo:null},{c:"FORM",hi:null,lo:null},{c:"BTC",hi:null,lo:null}];
+let state = {};   // c -> {price,chg,src,score,sig,vwap,d20,d200,rsi,lastNotif:{}}
+let audio=null;
+
+function beep(){
+  try{
+    if(!audio) audio=new (window.AudioContext||window.webkitAudioContext)();
+    const o=audio.createOscillator(),g=audio.createGain();
+    o.connect(g); g.connect(audio.destination);
+    o.frequency.value=880; g.gain.value=.3;
+    o.start(); o.stop(audio.currentTime+.6);
+    if(navigator.vibrate) navigator.vibrate([200,100,200]);
+  }catch(e){}
+}
+function notify(title,body){
+  addLog(title+" — "+body);
+  beep();
+  if(Notification.permission==="granted")
+    new Notification(title,{body,icon:"data:,",tag:title+Date.now()});
+}
+function addLog(t){
+  const d=document.createElement("div");
+  d.textContent=new Date().toLocaleTimeString('en-IN',{hour12:false})+"  "+t;
+  const log=document.getElementById("log");
+  log.prepend(d);
+  while(log.children.length>40) log.lastChild.remove();
+}
+function askNotif(){
+  Notification.requestPermission().then(p=>{
+    document.getElementById("notifBtn").textContent = p==="granted"?"🔔 Notification ON ✅":"🔕 blocked";
+    if(p==="granted") notify("Test alert","Notifications chalu ho gaye! 🎉");
+  });
+}
+function save(){ localStorage.setItem("coins",JSON.stringify(coins)); }
+function addCoin(){
+  const v=document.getElementById("coinIn").value.trim().toUpperCase().replace("USDT","").replace(/[-_/]/g,"");
+  if(!v) return;
+  if(!coins.find(x=>x.c===v)){ coins.push({c:v,hi:null,lo:null}); save(); render(); pollPrices(); pollSignals(v); }
+  document.getElementById("coinIn").value="";
+}
+function delCoin(c){ coins=coins.filter(x=>x.c!==c); delete state[c]; save(); render(); }
+function setLvl(c,which,val){
+  const it=coins.find(x=>x.c===c); if(!it) return;
+  it[which]=val===""?null:parseFloat(val); save();
+}
+function fmt(p){
+  if(p==null||isNaN(p)) return "--";
+  if(p>=1000) return p.toLocaleString('en-US',{maximumFractionDigits:2});
+  if(p>=1) return p.toFixed(4);
+  if(p>=0.001) return p.toFixed(6);
+  return p.toFixed(9);
+}
+
+// ---------- data ----------
+async function jget(u,timeoutMs=9000){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+    const r=await fetch(u,{signal:ctrl.signal,cache:"no-store"});
+    if(!r.ok) throw 0;
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+async function price1(c){
+  // pehle wahi source try karo jo pichhli baar chala tha (fast + stable)
+  const st=state[c];
+  const order = (st&&st.src==="Gate") ? ["Gate","OKX"] : ["OKX","Gate"];
+  for(const src of order){
+    try{
+      if(src==="OKX"){
+        const j=await jget(`${OKX}/market/ticker?instId=${c}-USDT`);
+        if(j.code==="0"&&j.data.length){
+          const t=j.data[0], last=+t.last, o=+t.open24h;
+          return {price:last,chg:o?(last/o-1)*100:0,src:"OKX"};
+        }
+      }else{
+        const a=await jget(`${GATE}/spot/tickers?currency_pair=${c}_USDT`);
+        if(a.length){ return {price:+a[0].last,chg:+a[0].change_percentage,src:"Gate"}; }
+      }
+    }catch(e){}
+  }
+  return null;
+}
+
+async function candles1h(c,src){
+  // primary source try karo, fail ho toh doosra exchange
+  const order = src==="Gate" ? ["Gate","OKX"] : ["OKX","Gate"];
+  for(const s of order){
+    try{
+      if(s==="OKX"){
+        const j=await jget(`${OKX}/market/candles?instId=${c}-USDT&bar=1H&limit=300`,12000);
+        if(j.code==="0"&&j.data.length) return j.data.map(r=>({t:+r[0],o:+r[1],h:+r[2],c:+r[3],l:+r[4],v:+r[5]})).reverse();
+      }else{
+        const a=await jget(`${GATE}/spot/candlesticks?currency_pair=${c}_USDT&interval=1h&limit=300`,12000);
+        if(Array.isArray(a)&&a.length) return a.map(r=>({t:+r[0]*1000,o:+r[5],h:+r[3],l:+r[4],c:+r[2],v:+r[6]}));
+      }
+    }catch(e){}
+  }
+  return null;
+}
+async function candles15m(c,src){
+  const order = src==="Gate" ? ["Gate","OKX"] : ["OKX","Gate"];
+  for(const s of order){
+    try{
+      if(s==="OKX"){
+        const j=await jget(`${OKX}/market/candles?instId=${c}-USDT&bar=15m&limit=96`,12000);
+        if(j.code==="0"&&j.data.length) return j.data.map(r=>({t:+r[0],o:+r[1],h:+r[2],c:+r[3],l:+r[4],v:+r[5]})).reverse();
+      }else{
+        const a=await jget(`${GATE}/spot/candlesticks?currency_pair=${c}_USDT&interval=15m&limit=96`,12000);
+        if(Array.isArray(a)&&a.length) return a.map(r=>({t:+r[0]*1000,o:+r[5],h:+r[3],l:+r[4],c:+r[2],v:+r[6]}));
+      }
+    }catch(e){}
+  }
+  return null;
+}
+
+// ---------- TOP DETECTOR (finish line check — 6 signs, 15m chart) ----------
+function emaLastArr(vals,n){
+  if(vals.length<n) return null;
+  const k=2/(n+1); let e=vals.slice(0,n).reduce((a,b)=>a+b)/n;
+  for(let i=n;i<vals.length;i++) e=vals[i]*k+e*(1-k);
+  return e;
+}
+function topCheck(cd, price){
+  if(!cd||cd.length<40) return null;
+  const closes=cd.map(x=>x.c), vols=cd.map(x=>x.v);
+  const lo24=Math.min(...cd.map(x=>x.l)), hi24=Math.max(...cd.map(x=>x.h));
+  const pumpPct=(hi24/lo24-1)*100;
+  let hiIdx=0; for(let i=1;i<cd.length;i++) if(cd[i].h>cd[hiIdx].h) hiIdx=i;
+  const sinceTop=(cd.length-1-hiIdx)*15;
+  const signs=[];
+
+  // 1. volume climax
+  let vIdx=0; for(let i=1;i<vols.length;i++) if(vols[i]>vols[vIdx]) vIdx=i;
+  let climax=false;
+  if(vIdx>=cd.length-12){
+    const vc=cd[vIdx], avg=vols.reduce((a,b)=>a+b,0)/vols.length;
+    const bodyUp=(vc.c-vc.o)/vc.o*100;
+    if(vols[vIdx]>4*avg && (bodyUp<0.5 || vc.c<(vc.h+vc.l)/2)) climax=true;
+  }
+  signs.push([climax,"Volume climax (bada volume, price nahi badha)"]);
+
+  // 2. upper wick rejection
+  let wick=false;
+  for(let i=hiIdx;i<Math.min(hiIdx+4,cd.length);i++){
+    const c=cd[i], rng=c.h-c.l;
+    if(rng>0 && (c.h-Math.max(c.o,c.c))/rng>0.5 && c.h>=hi24*0.995) wick=true;
+  }
+  signs.push([wick,"Upper wick rejection (top pe sellers)"]);
+
+  // 3. lower high
+  let lowerHigh=false;
+  if(cd.length-1-hiIdx>=4){
+    const post=cd.slice(hiIdx+1);
+    if(post.length){
+      const postHi=Math.max(...post.map(x=>x.h));
+      if(postHi<hi24*0.995){
+        let bounced=false;
+        for(let i=hiIdx+2;i<cd.length;i++) if(cd[i].h>cd[i-1].h) bounced=true;
+        if(bounced) lowerHigh=true;
+      }
+    }
+  }
+  signs.push([lowerHigh,"Lower high bana (bounce top tak nahi aya)"]);
+
+  // 4. RSI divergence
+  const r=rsiSeries(closes,14);
+  let div=false;
+  const half=Math.floor(closes.length/2);
+  if(r[closes.length-1]!=null){
+    let o=0; for(let i=1;i<half;i++) if(closes[i]>closes[o]) o=i;
+    let nn=half; for(let i=half+1;i<closes.length;i++) if(closes[i]>closes[nn]) nn=i;
+    if(closes[nn]>closes[o] && r[nn]!=null && r[o]!=null && r[nn]<r[o]-3) div=true;
+  }
+  signs.push([div,"RSI divergence (naya high, momentum nahi)"]);
+
+  // 5. structure break: below EMA20(15m) + session VWAP(15m)
+  const e20=emaLastArr(closes,20);
+  const vw=sessionVwap(cd);
+  const brk=!!(e20&&price<e20)&&!!(vw&&price<vw);
+  signs.push([brk,"Structure toota (EMA20 + VWAP ke neeche)"]);
+
+  // 6. selling volume dominant (last 8 candles)
+  let gv=0,rv=0;
+  for(const c of cd.slice(-8)){ if(c.c>=c.o) gv+=c.v; else rv+=c.v; }
+  signs.push([rv>gv*1.3,"Selling volume dominant (last 2h)"]);
+
+  const n=signs.filter(s=>s[0]).length;
+  let verdict,vclass;
+  if(n<=2){ verdict="🏃 RACE CHALU — SHORT MAT KARO"; vclass="tc-run"; }
+  else if(n<=4){ verdict="🏁 FINISH LINE PAAS — tayari karo, trigger ka wait"; vclass="tc-near"; }
+  else { verdict="🛑 FINISH CONFIRM — short setup ready (bounce reject pe)"; vclass="tc-done"; }
+
+  // short plan (sirf 5-6 pe)
+  let plan=null;
+  if(n>=5){
+    const post=cd.slice(hiIdx+1);
+    const lh=post.length?Math.max(...post.map(x=>x.h)):hi24*0.98;
+    plan={entry:lh*0.995, sl:hi24*1.01, tp1:(vw&&vw<price)?vw:price*0.95, tp2:lo24+(hi24-lo24)*0.5};
+  }
+  return {n,signs,verdict,vclass,pumpPct,sinceTop,plan};
+}
+
+// ---------- indicators (JS mini) ----------
+function ema(vals,n){
+  if(vals.length<n) return null;
+  const k=2/(n+1); let e=vals.slice(0,n).reduce((a,b)=>a+b)/n;
+  const out=Array(vals.length).fill(null); out[n-1]=e;
+  for(let i=n;i<vals.length;i++){ e=vals[i]*k+e*(1-k); out[i]=e; }
+  return out;
+}
+function demaLast(vals,n){
+  const e1=ema(vals,n); if(!e1) return null;
+  const s=n-1, e2=ema(e1.slice(s),n); if(!e2) return null;
+  const l1=e1[e1.length-1], l2=e2[e2.length-1];
+  return (l1!=null&&l2!=null)?2*l1-l2:null;
+}
+function rsiLast(vals,n=14){
+  if(vals.length<=n) return null;
+  let g=0,l=0;
+  for(let i=1;i<=n;i++){const ch=vals[i]-vals[i-1]; if(ch>0)g+=ch;else l-=ch;}
+  g/=n;l/=n;
+  for(let i=n+1;i<vals.length;i++){
+    const ch=vals[i]-vals[i-1];
+    g=(g*(n-1)+Math.max(ch,0))/n; l=(l*(n-1)+Math.max(-ch,0))/n;
+  }
+  return l===0?100:100-100/(1+g/l);
+}
+function sessionVwap(cd){
+  const now=new Date(); const ds=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate());
+  let num=0,den=0;
+  for(const x of cd) if(x.t>=ds){ const tp=(x.h+x.l+x.c)/3; num+=tp*x.v; den+=x.v; }
+  return den>0?num/den:null;
+}
+function rsiSeries(vals,n=14){
+  const out=Array(vals.length).fill(null);
+  if(vals.length<=n) return out;
+  let g=0,l=0;
+  for(let i=1;i<=n;i++){const ch=vals[i]-vals[i-1]; if(ch>0)g+=ch;else l-=ch;}
+  g/=n;l/=n;
+  out[n]= l===0?100:100-100/(1+g/l);
+  for(let i=n+1;i<vals.length;i++){
+    const ch=vals[i]-vals[i-1];
+    g=(g*(n-1)+Math.max(ch,0))/n; l=(l*(n-1)+Math.max(-ch,0))/n;
+    out[i]= l===0?100:100-100/(1+g/l);
+  }
+  return out;
+}
+function smaSeries(vals,m){
+  const out=Array(vals.length).fill(null);
+  for(let i=m-1;i<vals.length;i++){
+    let s=0,ok=true;
+    for(let j=i-m+1;j<=i;j++){ if(vals[j]==null){ok=false;break;} s+=vals[j]; }
+    if(ok) out[i]=s/m;
+  }
+  return out;
+}
+function stochRsiLast(closes,n=14){
+  const r=rsiSeries(closes,n);
+  const st=Array(closes.length).fill(null);
+  for(let i=2*n-1;i<closes.length;i++){
+    const w=r.slice(i-n+1,i+1);
+    if(w.some(x=>x==null)) continue;
+    const lo=Math.min(...w), hi=Math.max(...w);
+    st[i]= hi===lo?50:(r[i]-lo)/(hi-lo)*100;
+  }
+  const k=smaSeries(st,3), d=smaSeries(k,3);
+  const i=closes.length-1;
+  return {k:k[i], d:d[i], kPrev:k[i-1], dPrev:d[i-1]};
+}
+function mfiLast(cd,n=14){
+  if(cd.length<=n) return null;
+  const tp=cd.map(x=>(x.h+x.l+x.c)/3);
+  let pos=0,neg=0;
+  const i=cd.length-1;
+  for(let j=i-n+1;j<=i;j++){
+    const mf=tp[j]*cd[j].v;
+    if(tp[j]>tp[j-1]) pos+=mf; else if(tp[j]<tp[j-1]) neg+=mf;
+  }
+  return neg===0?100:100-100/(1+pos/neg);
+}
+function obvCheck(cd){
+  const obv=[0];
+  for(let i=1;i<cd.length;i++){
+    let p=obv[obv.length-1];
+    if(cd[i].c>cd[i-1].c) p+=cd[i].v; else if(cd[i].c<cd[i-1].c) p-=cd[i].v;
+    obv.push(p);
+  }
+  const s=smaSeries(obv,9);
+  const i=obv.length-1;
+  return s[i]!=null ? obv[i]>s[i] : null;
+}
+function atrLast(cd,n=14){
+  if(cd.length<=n) return null;
+  const trs=[cd[0].h-cd[0].l];
+  for(let i=1;i<cd.length;i++)
+    trs.push(Math.max(cd[i].h-cd[i].l, Math.abs(cd[i].h-cd[i-1].c), Math.abs(cd[i].l-cd[i-1].c)));
+  let a=trs.slice(0,n).reduce((x,y)=>x+y)/n;
+  for(let i=n;i<trs.length;i++) a=(a*(n-1)+trs[i])/n;
+  return a;
+}
+
+// ---------- Volume Profile: sabse strong Support / Resistance / POC ----------
+function volumeProfile(cd, price){
+  if(!cd||cd.length<50) return null;
+  const lo=Math.min(...cd.map(x=>x.l)), hi=Math.max(...cd.map(x=>x.h));
+  if(hi<=lo) return null;
+  const BINS=40, w=(hi-lo)/BINS, vols=Array(BINS).fill(0);
+  for(const x of cd){
+    const tp=(x.h+x.l+x.c)/3;
+    let b=Math.floor((tp-lo)/w); if(b<0)b=0; if(b>=BINS)b=BINS-1;
+    vols[b]+=x.v;
+  }
+  const center=b=>lo+(b+0.5)*w;
+  let poc=0; for(let i=1;i<BINS;i++) if(vols[i]>vols[poc]) poc=i;
+  // strongest high-volume node NEECHE price ke = support; UPAR = resistance
+  let supB=-1, resB=-1;
+  for(let i=0;i<BINS;i++){
+    const c=center(i);
+    if(c<price && (supB<0||vols[i]>vols[supB])) supB=i;
+    if(c>price && (resB<0||vols[i]>vols[resB])) resB=i;
+  }
+  return {
+    poc:center(poc),
+    support: supB>=0?center(supB):null,
+    resistance: resB>=0?center(resB):null
+  };
+}
+
+// ---------- Liquidation zones (ESTIMATE — leverage math se) ----------
+function liqZones(cd, price){
+  if(!cd||cd.length<48) return null;
+  const last48=cd.slice(-48);
+  const H=Math.max(...last48.map(x=>x.h));   // FOMO longs ki entry yahan
+  const L=Math.min(...last48.map(x=>x.l));   // panic shorts ki entry yahan
+  const levs=[10,25,50,100];
+  // Long liq = entry*(1 - 1/lev) → price ke NEECHE magnets (girke wahan tak khichta hai)
+  const longLiq=levs.map(l=>({lev:l,px:H*(1-1/l)})).filter(z=>z.px<price).sort((a,b)=>b.px-a.px);
+  // Short liq = entry*(1 + 1/lev) → price ke UPAR magnets (squeeze target)
+  const shortLiq=levs.map(l=>({lev:l,px:L*(1+1/l)})).filter(z=>z.px>price).sort((a,b)=>a.px-b.px);
+  return {longLiq:longLiq.slice(0,3), shortLiq:shortLiq.slice(0,3)};
+}
+
+function computeSignal(c,cd,price){
+  const closes=cd.map(x=>x.c);
+  const d20=demaLast(closes,20), d200=demaLast(closes,200);
+  const rsi=rsiLast(closes,14), vwap=sessionVwap(cd);
+  const st=stochRsiLast(closes,14), mfi=mfiLast(cd,14), obvUp=obvCheck(cd);
+  const atr=atrLast(cd,14)||price*0.01;
+  let sc=0,n=0;
+  if(d20){n++; sc+=price>d20?1:-1;}
+  if(d200){n++; sc+=price>d200?1:-1;}
+  if(vwap){n++; sc+=price>vwap?1:-1;}
+  if(rsi!=null){n++; if(rsi>=75)sc-=1; else if(rsi>=55)sc+=1; else if(rsi<=45)sc-=1;}
+  if(st.k!=null&&st.d!=null){
+    n++;
+    const crossUp=st.kPrev!=null&&st.kPrev<=st.dPrev&&st.k>st.d;
+    const crossDn=st.kPrev!=null&&st.kPrev>=st.dPrev&&st.k<st.d;
+    if(crossUp)sc+=1; else if(crossDn)sc-=1;
+    else if(st.k>85)sc-=1; else if(st.k<15)sc+=1;
+  }
+  if(mfi!=null){n++; if(mfi>=80)sc-=1; else if(mfi<=20)sc+=1; else sc+=mfi>50?1:-1;}
+  if(obvUp!=null){n++; sc+=obvUp?1:-1;}
+  // 15m-ish momentum: last close vs 4 candles ago on 1H (approx)
+  if(closes.length>4){n++; sc+=closes[closes.length-1]>closes[closes.length-5]?1:-1;}
+
+  let sig="WAIT",cls="b-wait";
+  if(sc>=5){sig="BUY",cls="b-buy";}
+  else if(sc>=3){sig="BULLISH (dip pe buy)",cls="b-bull";}
+  else if(sc<=-5){sig="SELL/SHORT",cls="b-sell";}
+  else if(sc<=-3){sig="BEARISH",cls="b-sell";}
+
+  // levels (signal.py jaisa)
+  const H=cd.slice(-20).map(x=>x.h), L=cd.slice(-20).map(x=>x.l);
+  const hi20=Math.max(...H), lo20=Math.min(...L);
+  const below=[vwap,d200,lo20].filter(x=>x&&x<price);
+  const above=[vwap,d20,hi20].filter(x=>x&&x>price);
+  const support=below.length?Math.max(...below):price*0.97;
+  const resistance=above.length?Math.min(...above):price*1.03;
+  let entryLo,entryHi,sl,tp1,tp2,rr,pTp1,pTp2;
+  const bull=sc>=3||(sc>-3&&price>(vwap||price));
+  if(bull){
+    const entry=(vwap&&vwap<price)?vwap:price;
+    entryLo=entry*0.998; entryHi=entry*1.002;
+    sl=support-1.2*atr; tp1=resistance; tp2=Math.max(hi20,tp1*1.004);
+    rr=(tp1-entry)/(entry-sl);
+  }else{
+    const entry=(vwap&&vwap>price)?vwap:price;
+    entryLo=entry*0.998; entryHi=entry*1.002;
+    sl=resistance+1.2*atr; tp1=support; tp2=Math.min(lo20,price*0.996);
+    rr=(entry-tp1)/(sl-entry);
+  }
+  const pWin=Math.min(80,50+4*Math.abs(sc));
+  const pRR=rr>0?rr/(rr+1)*100:50;
+  pTp1=Math.min(85,Math.max(10,0.5*pWin+0.5*pRR));
+  pTp2=Math.min(80,Math.max(5,0.62*pTp1));
+
+  // ---- "KYUN" explanation (simple Hindi) ----
+  const why=[];
+  const trendUp = d200&&price>d200, ctrlUp = vwap&&price>vwap;
+  if(trendUp&&ctrlUp) why.push("Trend UPAR hai (price DEMA200 + VWAP dono ke upar) — buyers control mein");
+  else if(trendUp&&!ctrlUp) why.push("Bada trend upar hai PAR aaj price VWAP ke neeche — abhi din ke sellers haavi, dip chal raha");
+  else if(!trendUp&&ctrlUp) why.push("Aaj bounce hai (VWAP ke upar) PAR bada trend neeche — ye pullback ho sakta hai, bharosa kam");
+  else why.push("Trend NEECHE hai (DEMA200 + VWAP dono ke neeche) — sellers control mein, buy risky");
+
+  if(rsi!=null){
+    if(rsi>=75) why.push("⚠️ RSI "+rsi.toFixed(0)+" = OVERBOUGHT — abhi chase karna mana hai, pullback ka wait karo");
+    else if(rsi<=25) why.push("RSI "+rsi.toFixed(0)+" = oversold — girna thak raha hai, bounce ban sakta hai (par confirm chahiye)");
+  }
+  if(st.k!=null){
+    if(st.k>85) why.push("Stoch RSI "+st.k.toFixed(0)+" pe — momentum ka petrol khatam hone wala zone");
+    else if(st.k<15) why.push("Stoch RSI "+st.k.toFixed(0)+" pe — neeche ka pressure thak raha, cross up ka wait");
+  }
+  if(mfi!=null&&mfi>=80) why.push("⚠️ MFI "+mfi.toFixed(0)+" = paisa overbought — bade log yahan profit book karte hain");
+  if(obvUp===false) why.push("OBV neeche = paisa bahar ja raha hai — move ko volume ka support NAHI hai");
+  if(obvUp===true&&sc>=3) why.push("OBV upar = asli paisa saath hai — move healthy hai");
+
+  if(sc>=5) why.push("👉 Isliye BUY: zyada tar checks green + entry zone tak aane pe hi lo, SL ke bina nahi");
+  else if(sc>=3) why.push("👉 Isliye 'dip pe buy': trend achha hai par abhi thoda stretched — entry zone (VWAP) tak patience");
+  else if(sc<=-5) why.push("👉 Isliye SELL/SHORT: zyada tar checks red — bounce entry zone tak aaye toh hi short");
+  else if(sc<=-3) why.push("👉 Isliye BEARISH: sellers haavi hain par confirm breakdown ka wait karo");
+  else why.push("👉 Isliye WAIT: signals aadhe idhar aadhe udhar — aisi jagah trade = coin toss. Trigger ka wait karo");
+
+  const vp=volumeProfile(cd,price);
+  const lq=liqZones(cd,price);
+  return {score:sc,max:n,sig,cls,d20,d200,rsi,vwap,mfi,stK:st.k,obvUp,
+          entryLo,entryHi,sl,tp1,tp2,rr,pTp1,pTp2,bull,why,support,resistance,vp,lq};
+}
+
+// ---------- agent brain (STANDALONE: sab browser mein, koi server nahi) ----------
+const agentNotes={
+  updated:"2026-09-22 08:20 IST",
+  market_mood:"Kal ka risk-on din khatam — aaj subah BTC bearish-neutral (consolidation). Aaj chase ka din NAHI, patience ka din hai. Naye longs sirf strong trigger pe.",
+  notes:[
+    {coin:"SYN",  note:"KAL KA TRADE KHATAM ✅ (TP1 0.2447 hit hua tha, SL uthaya tha toh profit mein exit). AB: score bearish, DEMA200 ke neeche. Naya buy NAHI jab tak 0.2470 upar 1H close na ho. Position bachi ho toh 0.238-0.240 bounce pe exit."},
+    {coin:"FORM", note:"Pump thanda pad raha (0.35 zone). Wahi plan: 0.3430 hold + bounce = chhota buy chance; 0.3430 toot gaya 1H close se = neeche 0.31 tak, koi buy nahi. Short abhi bhi confirm nahi."},
+    {coin:"BTC",  note:"85.8K consolidation. 87.8K upar close = naya leg upar. 83.3K (VWAP zone kal ka) toot gaya = correction deep. Beech mein WAIT."},
+    {coin:"NEIRO",note:"Meme — sirf chhota size. 0.0000927 ke neeche band hua toh plan cancel."},
+    {coin:"PEPE", note:"Kal ka #1 tha. Aaj fresh check karna hai — 'PEPE buy and sell' likho chat mein pehle order se pehle."}
+  ]
+};
+function loadNotes(){
+  const el=document.getElementById("mood");
+  if(el && agentNotes.market_mood)
+    el.innerHTML=`🧠 <b>Agent mood (${agentNotes.updated||''}):</b> ${agentNotes.market_mood}`;
+  loadFng();
+}
+// Fear & Greed Index (alternative.me — free, CORS open)
+async function loadFng(){
+  try{
+    const j=await jget("https://api.alternative.me/fng/?limit=2",10000);
+    const d=j.data; if(!d||!d.length) return;
+    const v=+d[0].value, lbl=d[0].value_classification, pv=d.length>1?+d[1].value:v;
+    const trend=v>pv?"↑":v<pv?"↓":"→";
+    let warn="", col="#d29922";
+    if(v>=75){ warn=" ⚠️ EXTREME GREED — top zone, chase mat karo"; col="#f85149"; }
+    else if(v>=55){ col="#d29922"; }
+    else if(v<=25){ warn=" 💎 EXTREME FEAR — historically buy zone"; col="#3fb950"; }
+    const el=document.getElementById("mood");
+    if(el) el.innerHTML+=`<div style="margin-top:6px;color:${col}"><b>😱 Fear & Greed: ${v}/100 (${lbl} ${trend})</b>${warn}</div>`;
+  }catch(e){}
+}
+// context rules — browser mein hi (pump trap, BTC mood, indicator conflict)
+function brainAnalyze(c){
+  const st=state[c]; if(!st||!st.price||!st.sigObj) return;
+  const ctx=[]; const chg=st.chg; const s=st.sigObj;
+  if(chg>=40) ctx.push(`🚨 PUMP ALERT: 24h +${chg.toFixed(0)}% — pump coin mode. Chase = trap, short = squeeze khatra. Sirf pullback entry, chhota size (2-5%).`);
+  else if(chg>=20) ctx.push(`⚠️ 24h +${chg.toFixed(0)}% — strong mover. Entry sirf pullback pe, top pe FOMO mat karo.`);
+  else if(chg<=-20) ctx.push(`⚠️ 24h ${chg.toFixed(0)}% — bada dump. 'Sasta lag raha' trap hai — falling knife mat pakdo.`);
+  if(s.score>=3 && s.obvUp===false) ctx.push("💰 Dhyan: indicators bullish PAR OBV outflow — volume confirm nahi, size aadha rakho.");
+  if(s.score<=-3 && s.obvUp===true) ctx.push("💰 Dhyan: indicators bearish PAR OBV inflow — short jaldi mat karo.");
+  if(c!=="BTC"){
+    const b=state["BTC"];
+    if(b&&b.sigObj){
+      if(b.sigObj.score>=4) ctx.push(`🌍 BTC bullish hai (score +${b.sigObj.score}) — market ka wind aapke saath.`);
+      else if(b.sigObj.score<=-3) ctx.push(`🌍 BTC bearish hai (score ${b.sigObj.score}) — market girne pe sab girta hai, extra caution.`);
+    }
+  }
+  st.brain={context:ctx};
+}
+function noteFor(c){
+  if(!agentNotes.notes) return null;
+  const n=agentNotes.notes.find(x=>x.coin===c);
+  return n?n.note:null;
+}
+// ---------- Whale Wall Detector (orderbook se bade orders) ----------
+async function fetchDepth(c,src){
+  const order = src==="Gate" ? ["Gate","OKX"] : ["OKX","Gate"];
+  for(const s of order){
+    try{
+      if(s==="OKX"){
+        const j=await jget(`${OKX}/market/books?instId=${c}-USDT&sz=400`,10000);
+        if(j.code==="0"&&j.data.length){
+          const b=j.data[0];
+          return {bids:b.bids.map(r=>[+r[0],+r[1]]), asks:b.asks.map(r=>[+r[0],+r[1]])};
+        }
+      }else{
+        const d=await jget(`${GATE}/spot/order_book?currency_pair=${c}_USDT&limit=100`,10000);
+        if(d.bids) return {bids:d.bids.map(r=>[+r[0],+r[1]]), asks:d.asks.map(r=>[+r[0],+r[1]])};
+      }
+    }catch(e){}
+  }
+  return null;
+}
+function findWalls(levels, price){
+  // wall = level jiska size average ka 8x+ ho aur total ka 3%+ ho
+  if(!levels||levels.length<20) return [];
+  const sizes=levels.map(l=>l[1]);
+  const avg=sizes.reduce((a,b)=>a+b,0)/sizes.length;
+  const total=sizes.reduce((a,b)=>a+b,0);
+  return levels
+    .map(l=>({px:l[0], sz:l[1], x:l[1]/avg, pct:l[1]/total*100, usd:l[0]*l[1]}))
+    .filter(w=>w.x>=8 && w.pct>=3)
+    .sort((a,b)=>b.sz-a.sz)
+    .slice(0,3);
+}
+async function pollWalls(c){
+  const st=state[c]; if(!st||!st.price) return;
+  const d=await fetchDepth(c, st.src||"OKX");
+  if(!d) return;
+  const bidW=findWalls(d.bids, st.price);
+  const askW=findWalls(d.asks, st.price);
+  // persistence tracking: wall pichhli baar bhi tha? (spoof vs asli)
+  const now=Date.now();
+  const prev=st.wallSeen||{};
+  const seen={};
+  const tag=(w,side)=>{
+    const key=side+":"+w.px.toPrecision(4);
+    seen[key]=prev[key]||now;
+    w.age=Math.round((now-seen[key])/60000); // minutes
+    return w;
+  };
+  st.walls={
+    bids:bidW.map(w=>tag(w,"b")),
+    asks:askW.map(w=>tag(w,"a")),
+    at:now
+  };
+  st.wallSeen=seen;
+}
+function fmtUsd(u){
+  if(u>=1e9) return "$"+(u/1e9).toFixed(2)+"B";
+  if(u>=1e6) return "$"+(u/1e6).toFixed(1)+"M";
+  if(u>=1e3) return "$"+(u/1e3).toFixed(0)+"K";
+  return "$"+u.toFixed(0);
+}
+
+// ---------- Whale Positions (futures: OI + funding + taker flow) ----------
+async function pollPositions(c){
+  const st=state[c]; if(!st||!st.price) return;
+  const inst=`${c}-USDT-SWAP`;
+  let oiUsd=null, fr=null, flow=null;
+  // --- OKX first ---
+  try{
+    const j=await jget(`${OKX}/public/open-interest?instType=SWAP&instId=${inst}`,10000);
+    if(j.code==="0"&&j.data.length) oiUsd=+j.data[0].oiUsd;
+  }catch(e){}
+  try{
+    const j=await jget(`${OKX}/public/funding-rate?instId=${inst}`,10000);
+    if(j.code==="0"&&j.data.length) fr=+j.data[0].fundingRate*100;
+  }catch(e){}
+  try{
+    const j=await jget(`${OKX}/market/trades?instId=${c}-USDT&limit=500`,10000);
+    if(j.code==="0"&&j.data.length){
+      let b=0,s=0;
+      for(const t of j.data){ const v=+t.px*+t.sz; if(t.side==="buy")b+=v; else s+=v; }
+      flow={buy:b,sell:s,pct:(b+s)?((b-s)/(b+s)*100):0};
+    }
+  }catch(e){}
+  // --- Gate fallback (OKX pe coin nahi mila toh) ---
+  if(oiUsd==null&&fr==null){
+    try{
+      const a=await jget(`${GATE}/futures/usdt/tickers?contract=${c}_USDT`,10000);
+      if(Array.isArray(a)&&a.length){
+        const t=a[0];
+        const sz=+t.total_size, mp=+t.mark_price, qm=+(t.quanto_multiplier||1);
+        if(sz>0&&mp>0) oiUsd=sz*qm*mp;
+        if(t.funding_rate!=null&&(+t.funding_rate!==0||sz>0)) fr=+t.funding_rate*100;
+      }
+    }catch(e){}
+  }
+  if(!flow){
+    try{
+      const a=await jget(`${GATE}/spot/trades?currency_pair=${c}_USDT&limit=500`,10000);
+      if(Array.isArray(a)&&a.length){
+        let b=0,s=0;
+        for(const t of a){ const v=+t.price*+t.amount; if(t.side==="buy")b+=v; else s+=v; }
+        flow={buy:b,sell:s,pct:(b+s)?((b-s)/(b+s)*100):0};
+      }
+    }catch(e){}
+  }
+  if(oiUsd==null&&fr==null&&flow==null){
+    st.pos={none:true,at:Date.now()};   // futures hi nahi hai is coin ka
+    return;
+  }
+  // OI trend: khud snapshots save karo (localStorage), 6h ka apna history banao
+  let hist=[];
+  try{ hist=JSON.parse(localStorage.getItem("oih:"+c)||"[]"); }catch(e){}
+  const now=Date.now();
+  if(oiUsd!=null){
+    if(!hist.length||now-hist[hist.length-1].t>10*60*1000){ // har 10 min ek snapshot
+      hist.push({t:now,oi:oiUsd,px:st.price});
+      hist=hist.filter(h=>now-h.t<12*3600*1000); // 12h rakho
+      try{ localStorage.setItem("oih:"+c,JSON.stringify(hist)); }catch(e){}
+    }
+  }
+  let verdict=null, oiCh=null;
+  const old=hist.find(h=>now-h.t>=3*3600*1000)||hist[0];
+  if(oiUsd!=null&&old&&old.oi&&now-old.t>30*60*1000){
+    oiCh=(oiUsd/old.oi-1)*100;
+    const pxUp=st.price>old.px;
+    const oiUp=oiCh>0.5, oiDn=oiCh<-0.5;
+    if(oiUp&&pxUp) verdict="🟢 Naya paisa LONG mein ghus raha — whales upar ka soch rahe";
+    else if(oiUp&&!pxUp) verdict="🔴 Naya paisa SHORT mein ghus raha — whales neeche ka soch rahe";
+    else if(oiDn&&pxUp) verdict="🟡 Shorts bhaag rahe (squeeze rally) — naya paisa nahi, bharosa kam";
+    else if(oiDn&&!pxUp) verdict="🟡 Longs surrender kar rahe — positions kat rahi hain";
+    else verdict="⚪ OI flat — koi bada naya commitment nahi";
+  }
+  st.pos={oiUsd,fr,flow,verdict,oiCh,at:now};
+}
+
+// ---------- LIVE auto-plan (har 3 min fresh, data se banta hai) ----------
+function autoPlan(c){
+  const st=state[c]; if(!st||!st.sigObj||!st.price) return null;
+  const s=st.sigObj, p=st.price;
+  const L=[];
+  if(s.score>=5){
+    L.push(`🟢 ABHI: BUY zone ${fmt(s.entryLo)}–${fmt(s.entryHi)} pe limit lagao, SL ${fmt(s.sl)}, TP1 pe 50% nikaal ke SL entry pe uthana.`);
+  } else if(s.score>=3){
+    L.push(`🟡 ABHI: seedha buy NAHI — dip ka wait. ${fmt(s.entryLo)}–${fmt(s.entryHi)} tak aaye + wahan hold ho toh buy (SL ${fmt(s.sl)}).`);
+  } else if(s.score<=-5){
+    L.push(`🔴 ABHI: bounce ${fmt(s.entryLo)}–${fmt(s.entryHi)} tak aaye toh SELL/SHORT (SL ${fmt(s.sl)}). Neeche TP ${fmt(s.tp1)}.`);
+  } else if(s.score<=-3){
+    L.push(`🟠 ABHI: sellers haavi — koi buy nahi. ${fmt(s.tp1)} toote toh aur girega; bounce aaye toh exit ka mauka.`);
+  } else {
+    L.push(`⚪ ABHI: WAIT — koi clean trade nahi. Range ke beech ho.`);
+  }
+  if(s.resistance) L.push(`👆 UPAR trigger: ${fmt(s.resistance)} ke upar 1H close = bullish breakout, uske baad hi chase socho.`);
+  if(s.support) L.push(`👇 NEECHE trigger: ${fmt(s.support)} toota = structure kharab, longs band / exit socho.`);
+  if(s.vp&&s.vp.support) L.push(`🛡️ Volume-killa support ${fmt(s.vp.support)} — deep dip aaye toh yahan sabse strong kharidari zone.`);
+  if(s.lq&&s.lq.shortLiq.length&&s.score>=3) L.push(`🚀 Upar squeeze fuel: ${fmt(s.lq.shortLiq[0].px)} (${s.lq.shortLiq[0].lev}x shorts ka liq) — breakout hua toh price yahan tak khich sakta hai.`);
+  if(s.lq&&s.lq.longLiq.length&&s.score<=-3) L.push(`💥 Neeche magnet: ${fmt(s.lq.longLiq[0].px)} (${s.lq.longLiq[0].lev}x longs ka liq) — breakdown pe pehla target yahi zone.`);
+  L.push(`💡 Bade order se pehle chat mein '${c} buy and sell' likh ke fresh 10-check confirm le lena.`);
+  return L;
+}
+
+// ---------- polling (PARALLEL = fast) ----------
+let failStreak=0;
+async function pollPrices(){
+  const results=await Promise.all(coins.map(async it=>{
+    let p=await price1(it.c);
+    if(!p) p=await price1(it.c);   // ek retry turant
+    return {it,p};
+  }));
+  let ok=0;
+  for(const {it,p} of results){
+    if(!p) continue;
+    ok++;
+    const st=state[it.c]||(state[it.c]={lastNotif:{}});
+    const prev=st.stale?null:st.price;
+    Object.assign(st,p);
+    st.stale=false;
+    // level alerts
+    if(prev!=null){
+      if(it.hi!=null && prev<it.hi && p.price>=it.hi && !recently(st,"hi")){
+        notify(`🟢 ${it.c} UPAR level hit!`, `${fmt(p.price)} — aapka level ${fmt(it.hi)} cross. Ab agent se confirm karo!`);
+        st.lastNotif.hi=Date.now(); flash(it.c);
+      }
+      if(it.lo!=null && prev>it.lo && p.price<=it.lo && !recently(st,"lo")){
+        notify(`🔴 ${it.c} NEECHE level hit!`, `${fmt(p.price)} — aapka level ${fmt(it.lo)} toot gaya. Check karo!`);
+        st.lastNotif.lo=Date.now(); flash(it.c);
+      }
+    }
+  }
+  // connection state: 1 fail = yellow (reconnecting), 3+ fails = red
+  const dot=document.getElementById("dot");
+  if(ok>0){
+    failStreak=0;
+    dot.style.color="#3fb950";
+    document.getElementById("stat").textContent =
+      `Last update: ${new Date().toLocaleTimeString('en-IN',{hour12:false})} · ${ok}/${coins.length} coins live`;
+  }else{
+    failStreak++;
+    if(failStreak>=3){
+      dot.style.color="#f85149";
+      document.getElementById("stat").textContent =
+        `❌ Connection down (${failStreak} fails) — net check karo, khud retry ho raha hai...`;
+    }else{
+      dot.style.color="#d29922";
+      document.getElementById("stat").textContent =
+        `🔄 Reconnecting... (try ${failStreak}) — purana data dikh raha hai`;
+    }
+    // fail pe 5 sec baad turant dobara try (12 sec ka wait nahi)
+    setTimeout(pollPrices, 5000);
+  }
+  saveCache();
+  render();
+}
+
+// phone jaage/tab wapas aaye toh turant refresh (background sleep ka ilaaj)
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden){ failStreak=0; pollPrices().then(()=>pollSignals()); }
+});
+window.addEventListener("online",()=>{ failStreak=0; pollPrices(); });
+window.addEventListener("focus",()=>{ pollPrices(); });
+function recently(st,k){ return st.lastNotif[k] && Date.now()-st.lastNotif[k]<10*60*1000; }
+
+async function pollSignals(only){
+  const targets=coins.filter(it=>!only||it.c===only);
+  await Promise.all(targets.map(async it=>{
+    const st=state[it.c]; if(!st||!st.price) return;
+    const cd=await candles1h(it.c, st.src||"OKX");
+    if(!cd||cd.length<60) return;
+    const prevSig=st.sigObj?st.sigObj.sig:null;
+    st.sigObj=computeSignal(it.c,cd,st.price);
+    // top detector (15m) — sirf pump coins pe (24h +10% se zyada)
+    try{
+      if(Math.abs(st.chg||0)>=10){
+        const c15=await candles15m(it.c, st.src||"OKX");
+        st.top=c15?topCheck(c15, st.price):null;
+      } else st.top=null;
+    }catch(e){ st.top=null; }
+    // signal flip alerts
+    if(prevSig && prevSig!==st.sigObj.sig && !recently(st,"sig")){
+      if(st.sigObj.sig==="BUY"){
+        notify(`🟢 ${it.c} signal flip: BUY zone`, `Score ${st.sigObj.score}/${st.sigObj.max} — agent se entry confirm karo`);
+        st.lastNotif.sig=Date.now(); flash(it.c);
+      } else if(st.sigObj.sig==="SELL/SHORT"){
+        notify(`🔴 ${it.c} signal flip: SELL zone`, `Score ${st.sigObj.score}/${st.sigObj.max} — position ho toh dekh lo`);
+        st.lastNotif.sig=Date.now(); flash(it.c);
+      }
+    }
+  }));
+  saveCache();
+  render();
+}
+
+// ---------- cache: dobara kholne pe turant purana data dikhao ----------
+function saveCache(){
+  try{
+    const slim={};
+    for(const c in state){
+      const st=state[c];
+      slim[c]={price:st.price,chg:st.chg,src:st.src,sigObj:st.sigObj,brain:st.brain,cachedAt:Date.now()};
+    }
+    localStorage.setItem("mcache",JSON.stringify(slim));
+  }catch(e){}
+}
+function loadCache(){
+  try{
+    const j=JSON.parse(localStorage.getItem("mcache")||"{}");
+    for(const c in j){
+      state[c]=Object.assign({lastNotif:{}},j[c]);
+      state[c].stale=true;
+    }
+  }catch(e){}
+}
+function flash(c){ const el=document.getElementById("card-"+c); if(el){el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");} }
+
+// ---------- UI ----------
+let curTab = localStorage.getItem("curTab") || "all";
+function setTab(t){
+  curTab=t; localStorage.setItem("curTab",t);
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===t));
+  render();
+}
+function tabSide(it){
+  const st=state[it.c];
+  if(!st||!st.sigObj) return "none";
+  const sc=st.sigObj.score;
+  if(sc>=3) return "long";
+  if(sc<=-3) return "short";
+  return "wait";
+}
+function render(){
+  const el=document.getElementById("list");
+  el.innerHTML="";
+  const info=document.getElementById("tabinfo");
+  if(curTab==="long") info.innerHTML="🟢 Sirf BUY setups (score +3 ya zyada) — entry/SL/TP buy direction ke. Koi coin na dikhe = abhi koi long layak nahi.";
+  else if(curTab==="short") info.innerHTML="🔴 Sirf SELL/SHORT setups (score -3 ya kam) — entry matlab bounce pe short, SL upar, TP neeche. Koi coin na dikhe = abhi koi short layak nahi (uptrend mein short mat dhundo!).";
+  else info.innerHTML="📋 Saare coins — har card pe uska apna signal.";
+  let shown=0;
+  for(const it of coins){
+    if(curTab!=="all"){
+      const side=tabSide(it);
+      if(curTab==="long" && side!=="long") continue;
+      if(curTab==="short" && side!=="short") continue;
+    }
+    shown++;
+    const st=state[it.c]||{};
+    const s=st.sigObj;
+    const div=document.createElement("div");
+    div.className="card"; div.id="card-"+it.c;
+    div.innerHTML=`
+      <div class="row1">
+        <span class="cname">${it.c}</span>
+        <span class="price">${fmt(st.price)}</span>
+        <span class="chg ${st.chg>=0?'up':'dn'}">${st.chg!=null?(st.chg>=0?'+':'')+st.chg.toFixed(1)+'%':'--'}</span>
+        <span class="badge ${s?s.cls:'b-wait'}">${s?s.sig+" "+(s.score>0?"+":"")+s.score:"..."}</span>
+        <button class="del" onclick="delCoin('${it.c}')">✕</button>
+      </div>
+      <div class="lvls">
+        <label>🔔 Upar alert:</label>
+        <input type="number" step="any" value="${it.hi??''}" placeholder="price"
+               onchange="setLvl('${it.c}','hi',this.value)">
+        <label>🔻 Neeche alert:</label>
+        <input type="number" step="any" value="${it.lo??''}" placeholder="price"
+               onchange="setLvl('${it.c}','lo',this.value)">
+      </div>
+      ${s?`<div class="plan ${s.bull?'plan-buy':'plan-sell'}">
+        <span>💰 <b>${s.bull?'BUY':'SELL/SHORT'}:</b> ${fmt(s.entryLo)} – ${fmt(s.entryHi)}</span>
+        <span>🛡️ SL: ${fmt(s.sl)}</span>
+        <span>🎯 TP1: ${fmt(s.tp1)} · TP2: ${fmt(s.tp2)}</span>
+        <span>🎲 TP1 ≈ ${s.pTp1.toFixed(0)}% · TP2 ≈ ${s.pTp2.toFixed(0)}% · R:R 1:${s.rr>0?s.rr.toFixed(1):'--'}</span>
+      </div>
+      <div class="why"><b>🧠 Kyun?</b><ul>${s.why.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+      ${st.brain&&st.brain.context&&st.brain.context.length?`<div class="ctx"><b>🌍 Context (agent brain):</b><ul>${st.brain.context.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+      ${s&&(s.vp||s.lq)?`<div class="lvlbox"><b>📊 Key Levels (volume + liquidation):</b>
+        ${s.vp?`<div class="lvlrow">🧱 <b>Strongest Resistance:</b> ${s.vp.resistance?fmt(s.vp.resistance):'--'} <span class="dim">(sabse zyada volume upar — yahan sellers baithe hain)</span></div>
+        <div class="lvlrow">🛡️ <b>Strongest Support:</b> ${s.vp.support?fmt(s.vp.support):'--'} <span class="dim">(sabse zyada volume neeche — yahan buyers ka killa)</span></div>
+        <div class="lvlrow">⚖️ <b>POC (fair price):</b> ${fmt(s.vp.poc)} <span class="dim">(300 candles ka sabse bada volume level)</span></div>`:''}
+        ${s.lq&&s.lq.shortLiq.length?`<div class="lvlrow liqup">🚀 <b>Short-liq magnets (UPAR):</b> ${s.lq.shortLiq.map(z=>`${fmt(z.px)} <span class="dim">(${z.lev}x)</span>`).join(' · ')}</div>`:''}
+        ${s.lq&&s.lq.longLiq.length?`<div class="lvlrow liqdn">💥 <b>Long-liq magnets (NEECHE):</b> ${s.lq.longLiq.map(z=>`${fmt(z.px)} <span class="dim">(${z.lev}x)</span>`).join(' · ')}</div>`:''}
+        <div class="dim" style="margin-top:4px">⚠️ Liq levels estimate hain (48h high/low pe leverage math) — price inki taraf "magnet" jaisa khinchta hai, wick maar ke reverse hona common hai.</div>
+      </div>`:''}
+      ${st.walls&&(st.walls.bids.length||st.walls.asks.length)?`<div class="whale"><b>🐋 Whale Walls (live orderbook, har 2 min):</b>
+        ${st.walls.bids.map(w=>`<div class="lvlrow liqup">🟢 BUY wall @ ${fmt(w.px)} — ${fmtUsd(w.usd)} (avg ka ${w.x.toFixed(0)}x) ${w.age>=30?'💪 '+w.age+' min se tika = ASLI lagti hai':w.age>=5?'⏳ '+w.age+' min purani':'🆕 nayi — spoof ho sakti hai, tikne do'}</div>`).join('')}
+        ${st.walls.asks.map(w=>`<div class="lvlrow liqdn">🔴 SELL wall @ ${fmt(w.px)} — ${fmtUsd(w.usd)} (avg ka ${w.x.toFixed(0)}x) ${w.age>=30?'💪 '+w.age+' min se tiki = ASLI lagti hai':w.age>=5?'⏳ '+w.age+' min purani':'🆕 nayi — spoof ho sakti hai, tikne do'}</div>`).join('')}
+        <div class="dim" style="margin-top:4px">🟢 wall = whale ka buy order (support) · 🔴 wall = whale ka sell order (resistance). Price ke paas aake wall GAYAB ho jaye = spoof tha (nakli). 30+ min tiki wall = asli.</div>
+      </div>`:''}
+      ${st.pos&&st.pos.none?`<div class="posbox"><b>🐳 Whale Positions:</b> <span class="dim">is coin ka futures market OKX/Gate pe nahi hai — OI data possible nahi. (Spot-only coin)</span></div>`:''}
+      ${st.pos&&!st.pos.none&&(st.pos.oiUsd!=null||st.pos.flow)?`<div class="posbox"><b>🐳 Whale Positions (executed paisa, futures):</b>
+        ${st.pos.oiUsd!=null?`<div class="lvlrow">💰 <b>Total laga paisa (OI):</b> ${fmtUsd(st.pos.oiUsd)}${st.pos.oiCh!=null?` <span class="dim">(${st.pos.oiCh>=0?'+':''}${st.pos.oiCh.toFixed(1)}% vs 3-6h pehle)</span>`:' <span class="dim">(trend ban raha — 30+ min chalne do)</span>'}</div>`:''}
+        ${st.pos.verdict?`<div class="lvlrow">👉 ${st.pos.verdict}</div>`:''}
+        ${st.pos.flow?`<div class="lvlrow">⚔️ <b>Abhi ka flow (500 trades):</b> buy ${fmtUsd(st.pos.flow.buy)} vs sell ${fmtUsd(st.pos.flow.sell)} → ${st.pos.flow.pct>3?'🟢 buyers aggressive':st.pos.flow.pct<-3?'🔴 sellers aggressive':'⚪ balanced'} (${st.pos.flow.pct>=0?'+':''}${st.pos.flow.pct.toFixed(1)}%)</div>`:''}
+        ${st.pos.fr!=null?`<div class="lvlrow">⚡ <b>Funding:</b> ${st.pos.fr>=0?'+':''}${st.pos.fr.toFixed(4)}% — ${st.pos.fr>0.03?'longs overheated ⚠️ (neeche squeeze khatra)':st.pos.fr<-0.01?'shorts bhare 🚀 (upar squeeze fuel)':'normal'}</div>`:''}
+        <div class="dim" style="margin-top:4px">ℹ️ Kisi EK whale ka personal position CEX pe public nahi hota — ye sab positions ka aggregate hai (OKX futures).</div>
+      </div>`:''}
+      ${st.top?`<div class="topbox ${st.top.vclass}"><b>🏁 Top Detector (${st.top.n}/6 signs · pump +${st.top.pumpPct.toFixed(0)}% · top se ${st.top.sinceTop} min):</b>
+        <div style="margin:4px 0"><b>${st.top.verdict}</b></div>
+        ${st.top.signs.map(s=>`<div class="lvlrow">${s[0]?'🔴':'⚪'} ${s[1]}</div>`).join('')}
+        ${st.top.plan?`<div class="lvlrow" style="margin-top:5px">🔴 <b>SHORT plan:</b> entry ${fmt(st.top.plan.entry)} (bounce reject pe) · SL ${fmt(st.top.plan.sl)} · TP1 ${fmt(st.top.plan.tp1)} · TP2 ${fmt(st.top.plan.tp2)}</div>`:''}
+      </div>`:''}
+      ${autoPlan(it.c)?`<div class="aplan"><b>🤖 Auto-plan (LIVE, har 3 min fresh):</b><ul>${autoPlan(it.c).map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+      ${noteFor(it.c)?`<div class="anote"><b>📝 Agent ka note (${agentNotes.updated||''}):</b> ${noteFor(it.c)}</div>`:''}
+      <div class="meta">${s?`VWAP ${fmt(s.vwap)} · DEMA20 ${fmt(s.d20)} · DEMA200 ${fmt(s.d200)} · RSI ${s.rsi?s.rsi.toFixed(0):'--'} · MFI ${s.mfi?s.mfi.toFixed(0):'--'} · StochK ${s.stK?s.stK.toFixed(0):'--'} · OBV ${s.obvUp==null?'--':(s.obvUp?'IN ✅':'OUT ❌')}`:'signal load ho raha...'} ${st.src?'· '+st.src:''}</div>`;
+    el.appendChild(div);
+  }
+  if(curTab!=="all" && shown===0){
+    const d=document.createElement("div");
+    d.className="card";
+    d.innerHTML = curTab==="long"
+      ? "🟢 Abhi aapke coins mein koi LONG setup nahi (score +3 se kam sab). WAIT hi sahi trade hai — ya 'scan' karwa ke naye coins add karo."
+      : "🔴 Abhi aapke coins mein koi SHORT setup nahi (koi score -3 tak nahi gira). Uptrend mein zabardasti short mat dhundo — squeeze ho jaoge. 'scan' karwa ke short candidates poocho.";
+    el.appendChild(d);
+  }
+}
+
+// tab button active state on load
+document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===curTab));
+
+loadCache();      // purana data turant dikhao (1 sec), fresh peeche aata rahega
+render();
+loadNotes();
+pollPrices().then(()=>pollSignals().then(()=>{ coins.forEach(it=>brainAnalyze(it.c)); Promise.all(coins.map(it=>Promise.all([pollWalls(it.c),pollPositions(it.c)]))).then(render); }));
+setInterval(pollPrices, 12000);
+setInterval(()=>pollSignals().then(()=>{ coins.forEach(it=>brainAnalyze(it.c)); render(); }), 180000);
+setInterval(()=>Promise.all(coins.map(it=>Promise.all([pollWalls(it.c),pollPositions(it.c)]))).then(render), 120000);
+</script>
+</body>
+</html>
