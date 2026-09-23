@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏁 Top Detector — Pump Finish Line</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --txt:#e6edf3; --dim:#8b949e;
+          --green:#3fb950; --red:#f85149; --yellow:#d29922; --blue:#58a6ff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; padding:12px; max-width:720px; margin:0 auto; }
+  h1 { font-size:1.15rem; display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .sub { color:var(--dim); font-size:.75rem; margin-bottom:12px; line-height:1.4; }
+  .bar { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  input,button { background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:.9rem; }
+  input#coinIn { width:130px; text-transform:uppercase; }
+  button { cursor:pointer; }
+  button.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; font-weight:600; }
+  button.warn { background:var(--yellow); border-color:var(--yellow); color:#000; font-weight:600; }
+  .card { border-radius:12px; padding:12px; margin-bottom:10px; border:1px solid var(--line); background:var(--card); }
+  .card.run  { border-color:rgba(63,185,80,.5);  background:rgba(63,185,80,.06); }
+  .card.near { border-color:rgba(210,153,34,.6); background:rgba(210,153,34,.07); }
+  .card.done { border-color:rgba(248,81,73,.6);  background:rgba(248,81,73,.07); }
+  .row1 { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .cname { font-weight:700; font-size:1.1rem; }
+  .price { font-variant-numeric:tabular-nums; font-size:1rem; }
+  .chg { font-size:.8rem; padding:2px 8px; border-radius:10px; }
+  .chg.up { background:rgba(63,185,80,.15); color:var(--green); }
+  .chg.dn { background:rgba(248,81,73,.15); color:var(--red); }
+  .verdict { font-size:.95rem; font-weight:700; margin:8px 0 6px; }
+  .v-run  { color:var(--green); }
+  .v-near { color:var(--yellow); }
+  .v-done { color:var(--red); }
+  .signs { font-size:.76rem; color:var(--dim); line-height:1.5; }
+  .plan { margin-top:8px; padding:9px 11px; border-radius:8px; font-size:.85rem; line-height:1.6;
+          background:rgba(248,81,73,.12); border:1px solid rgba(248,81,73,.45); }
+  .plan b { color:#ffa198; }
+  .wait { margin-top:8px; font-size:.8rem; color:var(--dim); }
+  .projbox { margin-top:8px; padding:8px 10px; border-radius:8px; font-size:.76rem; line-height:1.6;
+             background:rgba(88,166,255,.08); border:1px solid rgba(88,166,255,.35); }
+  .fuelbox { margin-top:8px; padding:8px 10px; border-radius:8px; font-size:.78rem; line-height:1.5;
+             background:rgba(163,113,247,.08); border:1px solid rgba(163,113,247,.4); }
+  .ceilbox { margin-top:8px; padding:8px 10px; border-radius:8px; font-size:.78rem; line-height:1.6;
+             background:rgba(240,246,252,.05); border:1px solid rgba(139,148,158,.45); }
+  .exbox { margin-top:8px; padding:9px 11px; border-radius:8px; font-size:.85rem; line-height:1.5; }
+  .ex-fire { background:rgba(248,81,73,.18); border:2px solid #f85149; animation: pulse 1.2s ease infinite; }
+  .ex-warn { background:rgba(210,153,34,.12); border:1px solid rgba(210,153,34,.5); }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(248,81,73,.4)} 50%{box-shadow:0 0 0 6px rgba(248,81,73,0)} }
+  .fuelbar { margin-top:5px; height:10px; border-radius:5px; background:#21262d; overflow:hidden; }
+  .fuelfill { height:100%; border-radius:5px; transition:width .5s; }
+  .fb-g { background:#3fb950; } .fb-y { background:#d29922; } .fb-r { background:#f85149; }
+  .f-hi { color:#3fb950; } .f-mid { color:#d29922; } .f-lo { color:#f85149; }
+  .del { background:none; border:none; color:var(--dim); font-size:1rem; padding:4px; }
+  .meta { color:var(--dim); font-size:.7rem; margin-top:6px; }
+  #stat { font-size:.72rem; color:var(--dim); text-align:right; margin-top:8px; }
+  .flash { animation: fl 1s ease 3; }
+  @keyframes fl { 0%,100%{background:var(--card)} 50%{background:#3a2d00} }
+</style>
+</head>
+<body>
+<h1>🏁 Top Detector <span id="dot" style="font-size:.7rem;color:var(--red)">●</span></h1>
+<div class="sub">Pump ki finish line pakdo — 6 signs, 15m chart, har 30 SECOND fresh.<br>
+🟢 = race chalu (short mat karo) · 🟡 = finish paas (tayari) · 🔴 = confirm (SHORT plan ready + notification)</div>
+
+<div class="bar">
+  <input id="coinIn" placeholder="COIN (SXT)" maxlength="12">
+  <button class="primary" onclick="addCoin()">+ Add</button>
+  <button class="warn" id="notifBtn" onclick="askNotif()">🔔 Notification ON karo</button>
+</div>
+
+<div id="list"></div>
+<div id="stat">--</div>
+
+<script>
+const OKX="https://www.okx.com/api/v5", GATE="https://api.gateio.ws/api/v4",
+      BIN="https://data-api.binance.vision/api/v3";
+let coins = JSON.parse(localStorage.getItem("topcoins")||'["SXT","DOLO","FORM"]');
+let state = {};
+let audio=null, failStreak=0;
+
+function beep(){
+  try{
+    if(!audio) audio=new (window.AudioContext||window.webkitAudioContext)();
+    const o=audio.createOscillator(),g=audio.createGain();
+    o.connect(g); g.connect(audio.destination);
+    o.frequency.value=660; g.gain.value=.3;
+    o.start(); o.stop(audio.currentTime+.7);
+    if(navigator.vibrate) navigator.vibrate([250,120,250]);
+  }catch(e){}
+}
+function notify(t,b){ beep(); if(Notification.permission==="granted") new Notification(t,{body:b,tag:t+Date.now()}); }
+function askNotif(){
+  Notification.requestPermission().then(p=>{
+    document.getElementById("notifBtn").textContent = p==="granted"?"🔔 ON ✅":"🔕 blocked";
+    if(p==="granted") notify("Top Detector ready","Finish line confirm hote hi bataunga! 🏁");
+  });
+}
+function save(){ localStorage.setItem("topcoins",JSON.stringify(coins)); }
+function addCoin(){
+  const v=document.getElementById("coinIn").value.trim().toUpperCase().replace("USDT","").replace(/[-_/]/g,"");
+  if(v&&!coins.includes(v)){ coins.push(v); save(); render(); pollOne(v); }
+  document.getElementById("coinIn").value="";
+}
+function delCoin(c){ coins=coins.filter(x=>x!==c); delete state[c]; save(); render(); }
+function fmt(p){
+  if(p==null||isNaN(p)) return "--";
+  if(p>=1000) return p.toLocaleString('en-US',{maximumFractionDigits:2});
+  if(p>=1) return p.toFixed(4);
+  if(p>=0.001) return p.toFixed(6);
+  return p.toFixed(9);
+}
+async function jget(u,ms=10000){
+  const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),ms);
+  try{ const r=await fetch(u,{signal:ctrl.signal,cache:"no-store"}); if(!r.ok) throw 0; return await r.json(); }
+  finally{ clearTimeout(t); }
+}
+
+// ---------- data: price + 15m candles (Binance -> OKX -> Gate) ----------
+async function fetchAll(c){
+  // Binance mirror
+  try{
+    const t=await jget(`${BIN}/ticker/24hr?symbol=${c}USDT`);
+    if(t.lastPrice){
+      const rows=await jget(`${BIN}/klines?symbol=${c}USDT&interval=15m&limit=96`);
+      if(Array.isArray(rows)&&rows.length>40)
+        return {price:+t.lastPrice, chg:+t.priceChangePercent, src:"Binance",
+                cd:rows.map(r=>({t:+r[0],o:+r[1],h:+r[2],l:+r[3],c:+r[4],v:+r[5]}))};
+    }
+  }catch(e){}
+  // OKX
+  try{
+    const j=await jget(`${OKX}/market/ticker?instId=${c}-USDT`);
+    if(j.code==="0"&&j.data.length){
+      const tk=j.data[0], last=+tk.last, o=+tk.open24h;
+      const k=await jget(`${OKX}/market/candles?instId=${c}-USDT&bar=15m&limit=96`);
+      if(k.code==="0"&&k.data.length>40)
+        return {price:last, chg:o?(last/o-1)*100:0, src:"OKX",
+                cd:k.data.map(r=>({t:+r[0],o:+r[1],h:+r[2],c:+r[3],l:+r[4],v:+r[5]})).reverse()};
+    }
+  }catch(e){}
+  // Gate
+  try{
+    const a=await jget(`${GATE}/spot/tickers?currency_pair=${c}_USDT`);
+    if(a.length){
+      const k=await jget(`${GATE}/spot/candlesticks?currency_pair=${c}_USDT&interval=15m&limit=96`);
+      if(Array.isArray(k)&&k.length>40)
+        return {price:+a[0].last, chg:+a[0].change_percentage, src:"Gate",
+                cd:k.map(r=>({t:+r[0]*1000,o:+r[5],h:+r[3],l:+r[4],c:+r[2],v:+r[6]}))};
+    }
+  }catch(e){}
+  return null;
+}
+
+// ---------- LIVE CEILING: orderbook ki asli sell-walls (fuel kahan tak) ----------
+async function fetchCeiling(c, price, src){
+  let asks=null;
+  try{
+    if(src==="Binance"){
+      const d=await jget(`${BIN}/depth?symbol=${c}USDT&limit=500`,10000);
+      if(d.asks) asks=d.asks.map(r=>[+r[0],+r[1]]);
+    }
+  }catch(e){}
+  if(!asks){ try{
+    const j=await jget(`${OKX}/market/books?instId=${c}-USDT&sz=400`,10000);
+    if(j.code==="0"&&j.data.length) asks=j.data[0].asks.map(r=>[+r[0],+r[1]]);
+  }catch(e){} }
+  if(!asks){ try{
+    const d=await jget(`${GATE}/spot/order_book?currency_pair=${c}_USDT&limit=100`,10000);
+    if(d.asks) asks=d.asks.map(r=>[+r[0],+r[1]]);
+  }catch(e){} }
+  if(!asks||asks.length<20) return null;
+  const sizes=asks.map(a=>a[1]);
+  const avg=sizes.reduce((a,b)=>a+b,0)/sizes.length;
+  // walls: avg ka 6x+ — price ke upar 12% ke andar
+  const walls=asks
+    .filter(a=>a[0]>price && a[0]<price*1.12 && a[1]>=6*avg)
+    .map(a=>({px:a[0], usd:a[0]*a[1], x:a[1]/avg}))
+    .sort((a,b)=>a.px-b.px)
+    .slice(0,3);
+  // cumulative sell pressure till first wall vs last-hour buy volume — rough breach odds
+  return walls.length?walls:null;
+}
+function rsiSeries(vals,n=14){
+  const out=Array(vals.length).fill(null);
+  if(vals.length<=n) return out;
+  let g=0,l=0;
+  for(let i=1;i<=n;i++){const ch=vals[i]-vals[i-1]; if(ch>0)g+=ch;else l-=ch;}
+  g/=n;l/=n; out[n]= l===0?100:100-100/(1+g/l);
+  for(let i=n+1;i<vals.length;i++){
+    const ch=vals[i]-vals[i-1];
+    g=(g*(n-1)+Math.max(ch,0))/n; l=(l*(n-1)+Math.max(-ch,0))/n;
+    out[i]= l===0?100:100-100/(1+g/l);
+  }
+  return out;
+}
+function emaLast(vals,n){
+  if(vals.length<n) return null;
+  const k=2/(n+1); let e=vals.slice(0,n).reduce((a,b)=>a+b)/n;
+  for(let i=n;i<vals.length;i++) e=vals[i]*k+e*(1-k);
+  return e;
+}
+function sessionVwap(cd){
+  const now=new Date(); const ds=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate());
+  let num=0,den=0;
+  for(const x of cd) if(x.t>=ds){ const tp=(x.h+x.l+x.c)/3; num+=tp*x.v; den+=x.v; }
+  return den>0?num/den:null;
+}
+
+// ---------- TOP CHECK (6 signs) ----------
+function topCheck(cd, price){
+  if(!cd||cd.length<40) return null;
+  const closes=cd.map(x=>x.c), vols=cd.map(x=>x.v);
+  const lo24=Math.min(...cd.map(x=>x.l)), hi24=Math.max(...cd.map(x=>x.h));
+  const pumpPct=(hi24/lo24-1)*100;
+  let hiIdx=0; for(let i=1;i<cd.length;i++) if(cd[i].h>cd[hiIdx].h) hiIdx=i;
+  const sinceTop=(cd.length-1-hiIdx)*15;
+  const signs=[];
+
+  let vIdx=0; for(let i=1;i<vols.length;i++) if(vols[i]>vols[vIdx]) vIdx=i;
+  let climax=false;
+  if(vIdx>=cd.length-12){
+    const vc=cd[vIdx], avg=vols.reduce((a,b)=>a+b,0)/vols.length;
+    if(vols[vIdx]>4*avg && ((vc.c-vc.o)/vc.o*100<0.5 || vc.c<(vc.h+vc.l)/2)) climax=true;
+  }
+  signs.push([climax,"Volume climax"]);
+
+  let wick=false;
+  for(let i=hiIdx;i<Math.min(hiIdx+4,cd.length);i++){
+    const c=cd[i], rng=c.h-c.l;
+    if(rng>0 && (c.h-Math.max(c.o,c.c))/rng>0.5 && c.h>=hi24*0.995) wick=true;
+  }
+  signs.push([wick,"Upper wick rejection"]);
+
+  let lowerHigh=false;
+  if(cd.length-1-hiIdx>=4){
+    const post=cd.slice(hiIdx+1);
+    if(post.length){
+      const postHi=Math.max(...post.map(x=>x.h));
+      if(postHi<hi24*0.995){
+        let b=false; for(let i=hiIdx+2;i<cd.length;i++) if(cd[i].h>cd[i-1].h) b=true;
+        if(b) lowerHigh=true;
+      }
+    }
+  }
+  signs.push([lowerHigh,"Lower high bana"]);
+
+  const r=rsiSeries(closes,14);
+  let div=false;
+  const half=Math.floor(closes.length/2);
+  if(r[closes.length-1]!=null){
+    let o=0; for(let i=1;i<half;i++) if(closes[i]>closes[o]) o=i;
+    let nn=half; for(let i=half+1;i<closes.length;i++) if(closes[i]>closes[nn]) nn=i;
+    if(closes[nn]>closes[o] && r[nn]!=null && r[o]!=null && r[nn]<r[o]-3) div=true;
+  }
+  signs.push([div,"RSI divergence"]);
+
+  const e20=emaLast(closes,20), vw=sessionVwap(cd);
+  signs.push([!!(e20&&price<e20)&&!!(vw&&price<vw),"Structure toota (EMA20+VWAP)"]);
+
+  let gv=0,rv=0;
+  for(const c of cd.slice(-8)){ if(c.c>=c.o) gv+=c.v; else rv+=c.v; }
+  signs.push([rv>gv*1.3,"Selling volume dominant"]);
+
+  const n=signs.filter(s=>s[0]).length;
+
+  // ---- PROJECTED TOP ZONES (fib extensions from pre-pump range) ----
+  // pump leg ka start dhundo: top se peeche jaakar pehla candle jiska low top se 15%+ neeche
+  let sw=0;
+  for(let i=hiIdx;i>0;i--){ if(cd[i].l<hi24*0.85){ sw=i; break; } }
+  let proj=null;
+  const pre=cd.slice(0, sw>10?sw:hiIdx);
+  if(pre.length>=8){
+    const preHi=Math.max(...pre.map(x=>x.h)), preLo=Math.min(...pre.map(x=>x.l));
+    const rng=preHi-preLo;
+    if(rng>0){
+      proj=[1.272,1.618,2.0,2.618].map(f=>({f, px:preLo+rng*f, hit:hi24>=preLo+rng*f*0.995}));
+    }
+  }
+
+  // ---- FUEL METER (live: kitna petrol bacha, kahan tak ja payega) ----
+  // 1) ATR stretch: pump-leg pre-pump ATR units me kitna chal chuka
+  let fuel=null;
+  {
+    const preEnd = sw>15?sw:Math.max(15,hiIdx);
+    const trs=[];
+    for(let i=1;i<preEnd;i++){
+      const c1=cd[i],c0=cd[i-1];
+      trs.push(Math.max(c1.h-c1.l, Math.abs(c1.h-c0.c), Math.abs(c1.l-c0.c)));
+    }
+    if(trs.length>=8){
+      const atr=trs.slice(-14).reduce((a,b)=>a+b,0)/Math.min(14,trs.length);
+      const legLo=cd[sw]?cd[sw].l:lo24;
+      const stretch=atr>0?(Math.max(price,hi24*0.999)-legLo)/atr:0;
+      // 2) volume fade: last 3 candles vs pump ki sabse badi candle
+      const peakV=Math.max(...vols.slice(Math.max(0,hiIdx-8)));
+      const last3=vols.slice(-3).reduce((a,b)=>a+b,0)/3;
+      const volPct=peakV>0?last3/peakV*100:0;
+      // 3) fuel % : stretch jitna zyada, tank utna khali (8 ATR = distribution zone, 13+ = khali)
+      let tank=100 - Math.min(95, stretch*7) ;         // 7% per ATR kharcha
+      if(volPct<25) tank-=15;                           // volume mar gaya = extra minus
+      tank=Math.max(3,Math.min(97,Math.round(tank)));
+      // projected stall: agla unhit fib zone, warna ATR-based ceiling
+      let stall=null;
+      if(proj){ const nx=proj.find(z=>!z.hit); if(nx) stall=nx.px; }
+      if(!stall) stall=legLo+atr*Math.max(stretch+2, 14); // rough ceiling
+      fuel={stretch:Math.round(stretch*10)/10, volPct:Math.round(volPct), tank, stall};
+    }
+  }
+
+  // ---- LIVE EXHAUSTION TRIGGER ("fuel khatam" wala PAL pakdo) ----
+  // last 3 candles pe check: buyers ne push kiya PAR price ne mana kar diya
+  let exhaust=null;
+  if(cd.length>=6){
+    const c0=cd[cd.length-1];   // abhi ki (ban rahi) candle
+    const c1=cd[cd.length-2];   // pichhli complete candle
+    const c2=cd[cd.length-3];
+    const avgV=vols.slice(-20).reduce((a,b)=>a+b,0)/Math.min(20,vols.length);
+    const nearHigh = Math.max(c0.h,c1.h) >= hi24*0.99;   // top ke paas hi ho
+    const exSigns=[];
+    // 1. Rejection wick: badi upar wick + high volume top pe
+    for(const c of [c0,c1]){
+      const rng=c.h-c.l;
+      if(rng>0 && c.h>=hi24*0.995){
+        const uw=(c.h-Math.max(c.o,c.c))/rng;
+        if(uw>0.55 && c.v>2*avgV){ exSigns.push("Rejection wick top pe (badi wick + bada volume)"); break; }
+      }
+    }
+    // 2. Effort vs result: bahut volume aaya PAR candle aage nahi badhi
+    if(nearHigh && c1.v>3*avgV){
+      const gain=(c1.c-c1.o)/c1.o*100;
+      if(gain<0.3) exSigns.push("Bada volume, zero progress (buyers ki puri taqat lagi, price ruk gaya)");
+    }
+    // 3. First red engulf: pichhli green candle ka pura body nigal liya
+    if(nearHigh && c1.c<c1.o && c2.c>c2.o && c1.o>=c2.c && c1.c<=c2.o){
+      exSigns.push("Red engulfing candle (sellers ne green ko poora kha liya)");
+    }
+    // 4. Lower low tick: push ke turant baad pichhli candle ka low toota
+    if(nearHigh && c0.l<c1.l && c1.h>=hi24*0.995){
+      exSigns.push("Pichhli candle ka low toota (pehla crack)");
+    }
+    // 5. Volume collapse: push candles ke baad volume 70%+ gir gaya
+    if(nearHigh){
+      const pushV=Math.max(...vols.slice(-6,-2));
+      if(pushV>3*avgV && c0.v<pushV*0.3 && c1.v<pushV*0.5){
+        exSigns.push("Volume collapse (buyers gayab ho gaye)");
+      }
+    }
+    const exN=exSigns.length;
+    if(exN>=2) exhaust={level:"FIRE", msg:"⛽💥 FUEL KHATAM — buyers exhausted, NEECHE ka chance!", signs:exSigns};
+    else if(exN===1) exhaust={level:"WARN", msg:"⚠️ Fuel khatam hone ke aasar — ek aur sign ka wait", signs:exSigns};
+  }
+
+  // short plan + chances
+  const post=cd.slice(hiIdx+1);
+  const lh=post.length?Math.max(...post.map(x=>x.h)):hi24*0.98;
+  const entry=lh*0.995, sl=hi24*1.01;
+  const tp1=(vw&&vw<price)?vw:price*0.95;
+  const tp2=lo24+(hi24-lo24)*0.5;
+  // chance: signs jitne zyada, short ka win% utna
+  const p1=Math.min(85, 30+9*n);
+  const p2=Math.round(p1*0.6);
+  return {n,signs,pumpPct,sinceTop,entry,sl,tp1,tp2,p1,p2,vw,hi24,proj,fuel,exhaust};
+}
+
+// ---------- polling ----------
+async function pollOne(c){
+  const d=await fetchAll(c);
+  if(!d){ state[c]={err:true}; return; }
+  const prevSt=state[c]||{};
+  const prev=prevSt.tc?prevSt.tc.n:null;
+  const prevEx=prevSt.tc&&prevSt.tc.exhaust?prevSt.tc.exhaust.level:null;
+  const tc=topCheck(d.cd, d.price);
+  let ceiling=null;
+  try{ ceiling=await fetchCeiling(c, d.price, d.src); }catch(e){}
+  state[c]={price:d.price, chg:d.chg, src:d.src, tc, ceiling, at:Date.now(),
+            lastExNotif:prevSt.lastExNotif||0};
+  if(tc&&prev!=null&&prev<5&&tc.n>=5){
+    notify(`🛑 ${c}: FINISH LINE CONFIRM!`,
+      `Short zone: ${fmt(tc.entry)} · SL ${fmt(tc.sl)} · TP ${fmt(tc.tp1)} — agent se confirm karo!`);
+    const el=document.getElementById("card-"+c);
+    if(el){el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");}
+  }
+  // FUEL KHATAM alarm — usi pal, 15 min cooldown ke saath
+  if(tc&&tc.exhaust&&tc.exhaust.level==="FIRE"&&prevEx!=="FIRE"
+     &&Date.now()-state[c].lastExNotif>15*60*1000){
+    state[c].lastExNotif=Date.now();
+    notify(`⛽💥 ${c}: FUEL KHATAM!`,
+      `${fmt(d.price)} — buyers exhausted. Neeche ka chance. Long ho toh nikal, short trigger dekh!`);
+    const el=document.getElementById("card-"+c);
+    if(el){el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");}
+  }
+}
+async function pollAll(){
+  const res=await Promise.all(coins.map(c=>pollOne(c).then(()=>1).catch(()=>0)));
+  const ok=res.filter(Boolean).length;
+  const dot=document.getElementById("dot");
+  if(ok>0){ failStreak=0; dot.style.color="#3fb950"; }
+  else{ failStreak++; dot.style.color=failStreak>=3?"#f85149":"#d29922"; setTimeout(pollAll,5000); }
+  document.getElementById("stat").textContent=
+    `Last update: ${new Date().toLocaleTimeString('en-IN',{hour12:false})} · ${ok}/${coins.length} live · har 30 sec refresh`;
+  render();
+}
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ failStreak=0; pollAll(); } });
+window.addEventListener("online",()=>{ failStreak=0; pollAll(); });
+
+// ---------- UI ----------
+function render(){
+  const el=document.getElementById("list");
+  el.innerHTML="";
+  for(const c of coins){
+    const st=state[c]||{};
+    const tc=st.tc;
+    let cls="", verdict="", vcls="";
+    if(tc){
+      if(tc.n<=2){ cls="run"; verdict="🏃 RACE CHALU — SHORT MAT KARO"; vcls="v-run"; }
+      else if(tc.n<=4){ cls="near"; verdict="🏁 FINISH LINE PAAS — tayari karo"; vcls="v-near"; }
+      else { cls="done"; verdict="🛑 FINISH CONFIRM — SHORT READY"; vcls="v-done"; }
+    }
+    const div=document.createElement("div");
+    div.className="card "+cls; div.id="card-"+c;
+    div.innerHTML=`
+      <div class="row1">
+        <span class="cname">${c}</span>
+        <span class="price">${fmt(st.price)}</span>
+        <span class="chg ${st.chg>=0?'up':'dn'}">${st.chg!=null?(st.chg>=0?'+':'')+st.chg.toFixed(1)+'%':'--'}</span>
+        <button class="del" onclick="delCoin('${c}')">✕</button>
+      </div>
+      ${st.err?`<div class="wait">❌ coin nahi mila (naam check karo)</div>`:''}
+      ${!tc&&!st.err?`<div class="wait">⏳ data load ho raha...</div>`:''}
+      ${tc?`
+        <div class="verdict ${vcls}">${verdict} <span style="font-weight:400;color:var(--dim)">(${tc.n}/6 signs · pump +${tc.pumpPct.toFixed(0)}% · top se ${tc.sinceTop}m)</span></div>
+        <div class="signs">${tc.signs.map(s=>`${s[0]?'🔴':'⚪'} ${s[1]}`).join(' &nbsp;·&nbsp; ')}</div>
+        ${st.ceiling&&st.ceiling.length?`<div class="ceilbox">🧱 <b>LIVE CEILING (orderbook ki asli sell-deewarein — yahi fuel ki asli limit hai):</b><br>
+          ${st.ceiling.map((w,i)=>`${i===0?'⛔':'🧱'} <b>${fmt(w.px)}</b> pe $${w.usd>=1000?(w.usd/1000).toFixed(0)+'K':w.usd.toFixed(0)} ki deewar (avg ka ${w.x.toFixed(0)}x)${i===0?' ← pehli rukavat':''}`).join('<br>')}
+          <br><span style="color:var(--dim);font-size:.7rem">⛔ pehli deewar = yahan tak raasta comparatively khali · deewar TOOT jaye bade volume se = agla level tak fuel · deewar pe price ruk ke wick banaye = wahi top</span></div>`:''}
+        ${tc.exhaust?`<div class="exbox ${tc.exhaust.level==='FIRE'?'ex-fire':'ex-warn'}">
+          <b>${tc.exhaust.msg}</b><br>
+          <span style="font-size:.74rem">${tc.exhaust.signs.map(s=>'🔥 '+s).join('<br>')}</span>
+        </div>`:''}
+        ${tc.fuel?`<div class="fuelbox">
+          ⛽ <b>FUEL METER:</b> tank ≈ <b class="${tc.fuel.tank>60?'f-hi':tc.fuel.tank>30?'f-mid':'f-lo'}">${tc.fuel.tank}%</b>
+          &nbsp;·&nbsp; move ${tc.fuel.stretch} ATR chal chuka &nbsp;·&nbsp; volume peak ka ${tc.fuel.volPct}%
+          <div class="fuelbar"><div class="fuelfill ${tc.fuel.tank>60?'fb-g':tc.fuel.tank>30?'fb-y':'fb-r'}" style="width:${tc.fuel.tank}%"></div></div>
+          <div style="margin-top:4px">🧱 <b>Stall zone (yahan tak ja sakta hai, aage mushkil):</b> ${fmt(tc.fuel.stall)}
+          ${tc.fuel.tank<=30?' — <b style="color:#ffa198">tank khali, kabhi bhi ruk sakta hai!</b>':tc.fuel.tank<=60?' — aadha tank, dhyan se':' — abhi fuel hai, chalega'}</div>
+        </div>`:''}
+        ${tc.proj?`<div class="projbox">🎯 <b>Projected TOP zones (pump se pehle hi calculate):</b><br>
+          ${tc.proj.map(z=>`${z.hit?'✅':'⬜'} ${z.f}x → <b>${fmt(z.px)}</b>${z.hit?' (hit ho gaya)':''}`).join(' &nbsp;·&nbsp; ')}<br>
+          <span style="color:var(--dim);font-size:.7rem">✅ = ye zone touch ho chuka · agla ⬜ zone = pump chalu rahe toh wahi agla magnet/top candidate. Actual top: ${fmt(tc.hi24)}</span></div>`:''}
+        ${tc.n>=5?`
+        <div class="plan">
+          🔴 <b>SHORT entry:</b> ${fmt(tc.entry)} (bounce reject pe)<br>
+          🛡️ <b>Stop Loss:</b> ${fmt(tc.sl)} (top ke upar)<br>
+          🎯 <b>Target 1:</b> ${fmt(tc.tp1)} &nbsp;|&nbsp; <b>Target 2:</b> ${fmt(tc.tp2)}<br>
+          🎲 <b>Chance:</b> TP1 hit ≈ ${tc.p1}% · TP2 ≈ ${tc.p2}% · SL ≈ ${100-tc.p1}%
+        </div>`:`
+        <div class="wait">${tc.n<=2?'Short ka time NAHI aaya — signs 5+ hone pe plan + notification milega.':'Thoda aur sabra — 5/6 signs pe SHORT plan + notification aayega.'}</div>`}
+      `:''}
+      <div class="meta">${st.src?st.src+' · 15m chart · 24h window':''}</div>`;
+    el.appendChild(div);
+  }
+  if(!coins.length) el.innerHTML='<div class="card">Upar coin add karo (jaise SXT, DOLO, FORM) — pump wale coins pe hi kaam karta hai.</div>';
+}
+
+render();
+pollAll();
+setInterval(pollAll, 30000);   // har 30 sec — fuel khatam wala PAL miss na ho
+</script>
+</body>
+</html>
