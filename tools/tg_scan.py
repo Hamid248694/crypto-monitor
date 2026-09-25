@@ -3,6 +3,8 @@
 import os
 import re
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from html import unescape
 
@@ -14,20 +16,37 @@ import scan as SC
 
 TG_TOKEN = os.environ.get("TG_TOKEN", "")
 TG_CHAT = os.environ.get("TG_CHAT", "")
+WHALE_CHAT = os.environ.get("WHALE_CHAT", "@hamid_whales")
 IST = timezone(timedelta(hours=5, minutes=30))
+HL = "https://api.hyperliquid.xyz/info"
+HL_LB = "https://stats-data.hyperliquid.xyz/Mainnet/leaderboard"
 
 
-def send(text):
-    if not TG_TOKEN or not TG_CHAT:
+def send_chat(chat_id, text):
+    if not TG_TOKEN or not chat_id:
         print("TG secrets missing"); return False
     r = requests.post(
         f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-        json={"chat_id": TG_CHAT, "text": text, "disable_web_page_preview": True},
+        json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
         timeout=20,
     )
-    ok = r.json().get("ok")
-    print("telegram:", ok)
+    j = r.json()
+    ok = j.get("ok")
+    print("telegram", chat_id, ok, "" if ok else j)
     return ok
+
+
+def send(text):
+    return send_chat(TG_CHAT, text)
+
+
+def fmt_usd(v):
+    a = abs(v)
+    if a >= 1e6:
+        return f"${v/1e6:.2f}M"
+    if a >= 1e3:
+        return f"${v/1e3:.0f}K"
+    return f"${v:.0f}"
 
 
 def collect(top=22, min_vol=400000):
@@ -284,6 +303,7 @@ def pump_watch():
 
 def main():
     pump_watch()
+    whale_watch()
     results, n = collect()
     elites = [r for r in results if is_elite(r)]
     print(f"scanned {n}, analyzed {len(results)}, elite-raw {len(elites)}")
