@@ -224,6 +224,74 @@ def fetch_fear_greed():
         return None
 
 
+def fetch_whales_for(coin, topn=20):
+    """Hyperliquid: top active wallets me se kaun is coin me kis side hai."""
+    try:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        r = SESSION.get("https://stats-data.hyperliquid.xyz/Mainnet/leaderboard",
+                        timeout=20)
+        rows = r.json().get("leaderboardRows", [])
+
+        def vol30(row):
+            for w, p in row.get("windowPerformances", []):
+                if w == "month":
+                    return float(p.get("vlm", 0))
+            return 0.0
+
+        def pnl30(row):
+            for w, p in row.get("windowPerformances", []):
+                if w == "month":
+                    return float(p.get("pnl", 0))
+            return 0.0
+
+        rows.sort(key=vol30, reverse=True)
+        whales = [{"addr": x["ethAddress"], "pnl30": pnl30(x)} for x in rows[:topn]]
+
+        def getpos(w):
+            try:
+                rr = SESSION.post("https://api.hyperliquid.xyz/info",
+                                  json={"type": "clearinghouseState",
+                                        "user": w["addr"]}, timeout=12)
+                out = []
+                for p in rr.json().get("assetPositions", []):
+                    q = p.get("position", {})
+                    if q.get("coin") != coin:
+                        continue
+                    sz = float(q.get("szi", 0))
+                    if sz == 0:
+                        continue
+                    out.append({"side": "LONG" if sz > 0 else "SHORT",
+                                "value": float(q.get("positionValue") or 0),
+                                "upnl": float(q.get("unrealizedPnl") or 0),
+                                "pnl30": w["pnl30"]})
+                return out
+            except Exception:
+                return []
+
+        long_usd = short_usd = 0.0
+        win_long = win_short = 0.0
+        nl = ns = 0
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for f in as_completed([ex.submit(getpos, w) for w in whales]):
+                for p in f.result():
+                    if p["side"] == "LONG":
+                        long_usd += p["value"]; nl += 1
+                        if p["pnl30"] > 0: win_long += p["value"]
+                    else:
+                        short_usd += p["value"]; ns += 1
+                        if p["pnl30"] > 0: win_short += p["value"]
+        total = long_usd + short_usd
+        if total <= 0:
+            return {"found": False}
+        wt = win_long + win_short
+        return {"found": True, "total": total,
+                "long_pct": long_usd / total * 100,
+                "nl": nl, "ns": ns,
+                "win_long_pct": (win_long / wt * 100) if wt > 0 else None}
+    except Exception:
+        return None
+
+
 # ---------------- indicators ----------------
 
 def ema_series(vals, n):
@@ -601,6 +669,18 @@ def analyze(coin, data, source, with_cvd=True, perp=False):
         "eta_up": eta_up, "eta_dn": eta_dn,
     }
 
+    # ---------- DO PLANS: A = VWAP pullback, B = Breakout (fill guarantee side) ----------
+    # Plan B: recent consolidation high (last 12 x 1H candles ka high) tode toh entry
+    recent12_hi = max(highs[-12:])
+    brk_entry = recent12_hi * 1.002
+    brk_sl = max(min(lows[-6:]), brk_entry - 1.5 * atr_val)
+    brk_tp1 = brk_entry + 1.5 * (brk_entry - brk_sl)
+    brk_tp2 = brk_entry + 2.5 * (brk_entry - brk_sl)
+    brk_chance = max(30, min(72, 40 + 3 * score))  # breakout thoda kam reliable
+    plan_b = {"entry": brk_entry, "sl": brk_sl, "tp1": brk_tp1,
+              "tp2": brk_tp2, "chance": brk_chance,
+              "trigger_hi": recent12_hi}
+
     return {
         "coin": coin, "source": source, "price": price, "chg24": chg24,
         "signal": signal, "emoji": emoji, "score": score,
@@ -615,10 +695,121 @@ def analyze(coin, data, source, with_cvd=True, perp=False):
         "fill_buy": fill_buy, "fill_short": fill_short,
         "buy_zone_px": buy_zone_px, "short_zone_px": short_zone_px,
         "abhi": abhi,
+        "plan_b": plan_b,
     }
 
 
-# ---------------- position map (kahan log ghuse + ab wahan kaun baitha hai) ----------------
+# ---------------- CONFIDENCE ENGINE (multi-layer confirmation) ----------------
+
+def htf_trend(coin, source):
+    """4H trend check: bada timeframe kya bol raha hai."""
+    try:
+        if source.startswith("Binance"):
+            r = SESSION.get("https://data-api.binance.vision/api/v3/klines",
+                            params={"symbol": f"{coin}USDT", "interval": "4h",
+                                    "limit": 120}, timeout=12)
+            rows = r.json()
+            closes = [float(x[4]) for x in rows]
+        elif source.startswith("OKX"):
+            r = SESSION.get("https://www.okx.com/api/v5/market/candles",
+                            params={"instId": f"{coin}-USDT", "bar": "4H",
+                                    "limit": 120}, timeout=12)
+            j = r.json()
+            closes = [float(x[4]) for x in reversed(j["data"])]
+        else:
+            r = SESSION.get("https://api.gateio.ws/api/v4/spot/candlesticks",
+                            params={"currency_pair": f"{coin}_USDT",
+                                    "interval": "4h", "limit": 120}, timeout=12)
+            closes = [float(x[2]) for x in r.json()]
+        if len(closes) < 60:
+            return None
+        e20 = ema_series(closes, 20)[-1]
+        e50 = ema_series(closes, 50)[-1]
+        px = closes[-1]
+        if e20 and e50:
+            if px > e20 > e50:
+                return 1      # strong uptrend
+            if px < e20 < e50:
+                return -1     # strong downtrend
+        return 0              # mixed
+    except Exception:
+        return None
+
+
+def btc_bias():
+    """BTC ka quick bias: alts ka mausam."""
+    try:
+        r = SESSION.get("https://data-api.binance.vision/api/v3/klines",
+                        params={"symbol": "BTCUSDT", "interval": "1h",
+                                "limit": 60}, timeout=12)
+        closes = [float(x[4]) for x in r.json()]
+        e20 = ema_series(closes, 20)[-1]
+        px = closes[-1]
+        mom = closes[-1] > closes[-7]
+        if e20:
+            if px > e20 and mom:
+                return 1
+            if px < e20 and not mom:
+                return -1
+        return 0
+    except Exception:
+        return None
+
+
+def confidence_engine(res, htf, btc, wh):
+    """Sab layers jodkar final confidence % + reasons.
+    NOTE: base ABS(score) se banta hai — short mein bhi strong score = strong confidence."""
+    base = 50 + 3.5 * abs(res["score"])     # direction-neutral strength
+    reasons = []
+    bull = res["score"] > 0
+
+    if htf is not None:
+        if (htf > 0 and bull) or (htf < 0 and not bull):
+            base += 12; reasons.append("✅ 4H trend SAATH hai (+12)")
+        elif htf == 0:
+            reasons.append("➖ 4H mixed (0)")
+        else:
+            base -= 15; reasons.append("❌ 4H trend KHILAF hai (-15)")
+
+    if btc is not None and res["coin"] != "BTC":
+        if (btc > 0 and bull) or (btc < 0 and not bull):
+            base += 8; reasons.append("✅ BTC saath hai (+8)")
+        elif btc == 0:
+            reasons.append("➖ BTC neutral (0)")
+        else:
+            base -= 10; reasons.append("❌ BTC khilaf hai (-10)")
+
+    if wh and wh.get("found"):
+        lp = wh["long_pct"]
+        if (lp >= 65 and bull) or (lp <= 35 and not bull):
+            base += 8; reasons.append("✅ Whales saath hain (+8)")
+        elif (lp <= 35 and bull) or (lp >= 65 and not bull):
+            base -= 10; reasons.append("❌ Whales khilaf hain (-10)")
+        else:
+            reasons.append("➖ Whales mixed (0)")
+
+    fng = res.get("fng")
+    if fng:
+        v = fng["value"]
+        if v >= 75 and bull:
+            base -= 6; reasons.append("⚠️ Extreme Greed — top zone (-6)")
+        elif v <= 25 and bull:
+            base += 6; reasons.append("✅ Extreme Fear — contrarian edge (+6)")
+
+    chg = abs(res.get("chg24") or 0)
+    if chg >= 50:
+        base -= 12; reasons.append(f"⚠️ 24h ±{chg:.0f}% pump/dump zone (-12)")
+
+    conf = max(15, min(88, base))
+    if conf >= 70:
+        label = "🟢 HIGH — poora size theek (SL ke saath)"
+    elif conf >= 55:
+        label = "🟡 MEDIUM — aadha size"
+    elif conf >= 40:
+        label = "🟠 LOW — chhota size ya skip"
+    else:
+        label = "🔴 VERY LOW — skip karo"
+    return conf, label, reasons
 
 def position_map(candles, price):
     """Volume profile: kis price pe sabse zyada volume hua + buy/sell split."""
@@ -738,6 +929,13 @@ def print_report(res, fr, oi):
     print(f"\n  {res['emoji']}  SIGNAL: {res['signal']}")
     print(f"     Score: {res['score']:+d} / {res['max_score']}")
 
+    cf = res.get("confidence")
+    if cf:
+        conf, label, reasons = cf
+        print(f"\n  🎖️  CONFIDENCE: {conf:.0f}% — {label}")
+        for rr_ in reasons:
+            print(f"      {rr_}")
+
     ab = res.get("abhi")
     if ab:
         print(f"\n  ⚡ ABHI SE (live price {fmt_px(res['price'])} se seedha):")
@@ -795,6 +993,29 @@ def print_report(res, fr, oi):
         if res.get("fill_short") is not None:
             print(f"     🔴 SHORT/SELL order @ {fmt_px(res['short_zone_px'])} tak price jaaye ≈ {res['fill_short']:.0f}%")
 
+    wh = res.get("whales")
+    if wh is not None:
+        print(f"\n  🐋 WHALES (Hyperliquid on-chain, top active wallets):")
+        if not wh or not wh.get("found"):
+            print(f"     Top whales me se koi bhi {res['coin']} me nahi baitha — "
+                  f"smart money ka focus yahan nahi (na bullish na bearish).")
+        else:
+            lp = wh["long_pct"]
+            v = ("🟢 whales UPAR ka soch rahe" if lp >= 65 else
+                 "🔴 whales NEECHE ka soch rahe" if lp <= 35 else
+                 "⚪ whales bate hue — clear side nahi")
+            print(f"     Paisa: {'$%.1fM' % (wh['total']/1e6) if wh['total'] >= 1e6 else '$%.0fK' % (wh['total']/1e3)} "
+                  f"| LONG {lp:.0f}% ({wh['nl']}) vs SHORT {100-lp:.0f}% ({wh['ns']}) → {v}")
+            if wh.get("win_long_pct") is not None:
+                wl = wh["win_long_pct"]
+                print(f"     🏆 Jeetne-wale whales ka paisa: {wl:.0f}% LONG / {100-wl:.0f}% SHORT"
+                      + (" ← inka weight zyada do" if abs(wl - 50) > 20 else ""))
+            # conflict warning
+            if res["score"] >= 3 and lp <= 35:
+                print(f"     ⚠️ CONFLICT: indicators bullish PAR whales short — size aadha rakho")
+            elif res["score"] <= -3 and lp >= 65:
+                print(f"     ⚠️ CONFLICT: indicators bearish PAR whales long — short jaldi mat karo")
+
     pm = res.get("posmap")
     if pm:
         print(f"\n  🗺️  POSITION MAP (kahan sabse zyada log ghuse the + ab wahan kaun baitha hai):")
@@ -821,10 +1042,18 @@ def print_report(res, fr, oi):
     print(f"\n  🎯 LEVELS:")
     print(f"     Support   : {fmt_px(res['support'])}")
     print(f"     Resistance: {fmt_px(res['resistance'])}")
-    print(f"     Entry zone: {fmt_px(res['entry_lo'])} – {fmt_px(res['entry_hi'])}")
-    print(f"     Stop Loss : {fmt_px(res['sl'])}")
-    print(f"     Target 1  : {fmt_px(res['tp1'])}")
-    print(f"     Target 2  : {fmt_px(res['tp2'])}   (R:R ≈ 1:{res['rr1']:.1f})")
+
+    print(f"\n  📋 DO PLANS (jo pehle trigger ho wahi lo):")
+    print(f"     🅰️ VWAP PULLBACK (sasta, high-chance, par fill ka intezar):")
+    print(f"        Entry {fmt_px(res['entry_lo'])} – {fmt_px(res['entry_hi'])} | SL {fmt_px(res['sl'])} | TP1 {fmt_px(res['tp1'])} | TP2 {fmt_px(res['tp2'])} (R:R 1:{res['rr1']:.1f})")
+    pb = res.get("plan_b")
+    if pb and res["score"] >= 3:
+        print(f"     🅱️ BREAKOUT (coin wapas na aaye toh bhi entry mile):")
+        print(f"        Trigger: {fmt_px(pb['trigger_hi'])} ke UPAR 1H close + volume")
+        print(f"        Entry {fmt_px(pb['entry'])} | SL {fmt_px(pb['sl'])} | TP1 {fmt_px(pb['tp1'])} | TP2 {fmt_px(pb['tp2'])} | chance ≈ {pb['chance']:.0f}%")
+        print(f"        (size: Plan A ka aadha — breakout thoda risky hota hai)")
+    elif pb:
+        print(f"     🅱️ BREAKOUT: signal bullish nahi — Plan B inactive")
 
     print("\n" + "─" * W)
     print("  ⚠️  Educational analysis — financial advice nahi.")
@@ -865,6 +1094,11 @@ def main():
     except Exception:
         res["posmap"] = None
     res["fng"] = fetch_fear_greed()
+    res["whales"] = fetch_whales_for(coin)
+    res["htf"] = htf_trend(coin, source)
+    res["btc_bias"] = btc_bias() if coin != "BTC" else None
+    res["confidence"] = confidence_engine(res, res["htf"], res["btc_bias"],
+                                          res["whales"])
     fr, oi = (perp_extras(coin) if args.perp else (None, None))
     print_report(res, fr, oi)
 
