@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Telegram ELITE scanner — GitHub Actions se 24/7 chalta hai."""
+"""Telegram — sirf PAKKA HIGH-confidence pick. Spam / weak setups nahi."""
 import os
 import sys
 from datetime import datetime, timezone, timedelta
@@ -58,10 +58,14 @@ def collect(top=22, min_vol=400000):
         if d is None:
             d = S.fetch_gate(coin); src = "Gate"
         if d is None:
+            d = S.fetch_binance(coin) if hasattr(S, "fetch_binance") else None
+            src = "Binance"
+        if d is None:
             continue
         try:
             r = S.analyze(coin, d, src, with_cvd=False)
             r["vol24"] = t["vol"]
+            r["_src"] = src
             results.append(r); done += 1
         except Exception:
             continue
@@ -71,44 +75,98 @@ def collect(top=22, min_vol=400000):
 def is_elite(r):
     if r["prob"][2] is None:
         return False
-    return (abs(r["score"]) >= 6 and r["prob"][1] >= 70 and (r.get("rr1") or 0) >= 1.8
-            and (r.get("vol24") or 0) >= 800_000 and abs(r.get("chg24") or 0) < 50)
+    return (abs(r["score"]) >= 6 and r["prob"][1] >= 70
+            and (r.get("rr1") or 0) >= 1.8
+            and (r.get("vol24") or 0) >= 800_000
+            and abs(r.get("chg24") or 0) < 45)
 
 
-def fmt_pick(r, tag="⭐ ELITE"):
+def enrich(r):
+    """4H + BTC confidence — sirf ye extra layers pakka banaati hain."""
+    try:
+        htf = S.htf_trend(r["coin"], r.get("_src") or "OKX")
+    except Exception:
+        htf = None
+    try:
+        btc = S.btc_bias() if r["coin"] != "BTC" else None
+    except Exception:
+        btc = None
+    conf, label, reasons = S.confidence_engine(r, htf, btc, None)
+    r["conf"] = conf
+    r["conf_label"] = label
+    r["conf_why"] = reasons
+    return r
+
+
+def near_entry(r):
+    """Abhi entry possible? VWAP/entry se 2.5% ke andar."""
+    px = r["price"]
+    entry = (r["entry_lo"] + r["entry_hi"]) / 2
+    return abs(px / entry - 1) * 100 <= 2.5
+
+
+def fmt_pakka(r):
     side = "🟢 BUY" if r["score"] > 0 else "🔴 SHORT"
-    vol = r["vol24"]
-    vs = f"{vol/1e6:.1f}M" if vol >= 1e6 else f"{vol/1e3:.0f}K"
-    return (
-        f"{tag} {side} {r['coin']}/USDT\n"
-        f"Price: {S.fmt_px(r['price'])}  ({r['chg24']:+.1f}% 24h)  vol {vs}\n"
-        f"Score: {r['score']:+d}/{r['max_score']}\n"
-        f"💰 Entry: {S.fmt_px(r['entry_lo'])} – {S.fmt_px(r['entry_hi'])}\n"
-        f"🛡️ SL: {S.fmt_px(r['sl'])}\n"
-        f"🎯 TP1: {S.fmt_px(r['tp1'])}   TP2: {S.fmt_px(r['tp2'])}\n"
-        f"🎲 TP1 chance ≈ {r['prob'][1]:.0f}%   R:R 1:{r['rr1']:.1f}\n"
-        f"👉 Order se pehle chat me '{r['coin']} buy and sell' likh ke confirm karo."
-    )
+    split = r["conf"] >= 72 and r["score"] >= 6
+    lines = [
+        f"🎯 PAKKA SETUP  {datetime.now(IST).strftime('%d %b %H:%M IST')}",
+        f"{side}  {r['coin']}/USDT",
+        f"Price: {S.fmt_px(r['price'])}  ({r['chg24']:+.1f}%)",
+        f"🎖️ Confidence: {r['conf']:.0f}%  |  Score {r['score']:+d}",
+        "",
+    ]
+    if split and r["score"] > 0:
+        lines += [
+            "📋 SPLIT ENTRY (miss na ho):",
+            f"1️⃣ AADHA ABHI market/limit @ {S.fmt_px(r['price'])}",
+            f"2️⃣ AADHA LIMIT @ {S.fmt_px(r['entry_lo'])} (VWAP)",
+            f"🛡️ SL dono ka: {S.fmt_px(r['sl'])}",
+        ]
+    else:
+        lines += [
+            f"💰 Entry: {S.fmt_px(r['entry_lo'])} – {S.fmt_px(r['entry_hi'])}",
+            f"🛡️ SL: {S.fmt_px(r['sl'])}",
+        ]
+    lines += [
+        f"🎯 TP1: {S.fmt_px(r['tp1'])}  (50% book, SL entry pe utha dena)",
+        f"🎯 TP2: {S.fmt_px(r['tp2'])}",
+        f"🎲 TP1 ≈ {r['prob'][1]:.0f}%   R:R 1:{r['rr1']:.1f}",
+        "",
+        "📝 Exit sirf TP / SL — beech mein button nahi.",
+        "⚠️ SL ke bina mat lagao. Size chhota. Risk aapka.",
+    ]
+    return "\n".join(lines)
 
 
 def main():
-    now = datetime.now(IST).strftime("%d %b %H:%M IST")
     results, n = collect()
     elites = [r for r in results if is_elite(r)]
-    print(f"scanned {n} pairs, analyzed {len(results)}, elite {len(elites)}")
+    print(f"scanned {n}, analyzed {len(results)}, elite-raw {len(elites)}")
 
-    if elites:
-        parts = [f"🤖 AUTO-SCAN  {now}\n{len(elites)} ELITE pick(s) — 2180+ coins se:"]
-        for r in elites[:4]:
-            parts.append("\n" + fmt_pick(r))
-        parts.append("\n⚠️ Educational — SL ke bina mat lagao. Risk aapka.")
-        send("\n".join(parts))
-    else:
-        # silent wait — spam nahi. heartbeat sirf FORCE=1 pe
+    pakka = []
+    for r in elites:
+        enrich(r)
+        print(f"  {r['coin']} conf={r['conf']:.0f} near={near_entry(r)}")
+        # PAKKA = HIGH confidence 72%+ AND (near entry OR strong long with split)
+        if r["conf"] < 72:
+            continue
+        if abs(r.get("chg24") or 0) >= 40:
+            continue  # pump-trap
+        pakka.append(r)
+
+    # sabse high confidence pehle, near-entry ko bonus
+    pakka.sort(key=lambda r: (r["conf"] + (8 if near_entry(r) else 0)), reverse=True)
+
+    if not pakka:
         if os.environ.get("FORCE"):
-            send(f"🤖 AUTO-SCAN  {now}\n⭐ ELITE: koi nahi — WAIT hi profit.\n"
-                 f"(Filter: score 6+, chance 70%+, R:R 1.8+)")
-        print("no elite — silent")
+            send("🤖 Scan complete — aaj PAKKA setup nahi. WAIT.\n(Filter: conf 72%+, ELITE, no pump-trap)")
+        print("no pakka — silent")
+        return
+
+    # SIRF 1 coin — jo sabse pakka ho
+    best = pakka[0]
+    send(fmt_pakka(best))
+    print("sent", best["coin"], best["conf"])
 
 
 if __name__ == "__main__":
