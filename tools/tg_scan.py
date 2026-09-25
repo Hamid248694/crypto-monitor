@@ -131,6 +131,18 @@ def fmt_pakka(r):
         f"🎯 TP1: {S.fmt_px(r['tp1'])}  (50% book, SL entry pe utha dena)",
         f"🎯 TP2: {S.fmt_px(r['tp2'])}",
         f"🎲 TP1 ≈ {r['prob'][1]:.0f}%   R:R 1:{r['rr1']:.1f}",
+    ]
+    fd = r.get("field")
+    if fd:
+        lines.append("")
+        if fd.get("ask_w"):
+            w = fd["ask_w"][0]
+            lines.append(f"🔺 UPAR deewar: {S.fmt_px(w['px'])} pe ${w['usd']:,.0f} — tootne ka chance ≈ {fd['ask_break']:.0f}%")
+        if fd.get("bid_w"):
+            w = fd["bid_w"][0]
+            lines.append(f"🔻 NEECHE deewar: {S.fmt_px(w['px'])} pe ${w['usd']:,.0f} — tootne ka chance ≈ {fd['bid_break']:.0f}%")
+        lines.append(fd["crowd_txt"])
+    lines += [
         "",
         "📝 Exit sirf TP / SL — beech mein button nahi.",
         "⚠️ SL ke bina mat lagao. Size chhota. Risk aapka.",
@@ -165,6 +177,13 @@ def main():
 
     # SIRF 1 coin — jo sabse pakka ho
     best = pakka[0]
+    try:
+        cvd_t = (best.get("cvd") or (None, 0))[1]
+        best["field"] = S.battlefield(
+            best["coin"], best.get("_src") or "OKX", best["price"],
+            best["score"], cvd_t, None, best.get("vol24"))
+    except Exception:
+        best["field"] = None
     send(fmt_pakka(best))
     print("sent", best["coin"], best["conf"])
 
