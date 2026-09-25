@@ -186,6 +186,41 @@ def main():
         print("   (Filter: score 6+, TP1 chance 70%+, R:R 1.8+, vol $800K+, 24h move <50%)")
     print("⭐" * 20)
 
+    # ---------- VWAP ZONE (READY-TO-ENTER: price VWAP ke paas hai ABHI) ----------
+    ready = []
+    for r in results:
+        vwap = r.get("vwap")
+        if not vwap or not r.get("price"):
+            continue
+        dist = (r["price"] / vwap - 1) * 100          # +ve = VWAP ke upar
+        vol = r.get("vol24") or 0
+        chg = abs(r.get("chg24") or 0)
+        if abs(dist) <= 1.5 and vol >= 500_000 and chg < 60 and abs(r["score"]) >= 3:
+            ready.append((r, dist))
+
+    print("\n" + "🎯" * 20)
+    if ready:
+        print("🎯 VWAP ZONE — READY TO ENTER (price ABHI vwap ke paas, wait nahi karna):")
+        ready.sort(key=lambda x: -abs(x[0]["score"]))
+        for r, dist in ready[:6]:
+            bull = r["score"] > 0
+            side = "🟢 BUY" if bull else "🔴 SHORT"
+            if r["prob"][2] is not None:
+                ch = f"{r['prob'][1]:.0f}%"
+            else:
+                ch = "~60%"
+            print(f"   {side} {r['coin']} @ {S.fmt_px(r['price'])} "
+                  f"(VWAP se {dist:+.1f}%) | score {r['score']:+d} | "
+                  f"SL {S.fmt_px(r['sl'])} | TP1 {S.fmt_px(r['tp1'])} | "
+                  f"TP1 chance ≈ {ch} | R:R 1:{(r.get('rr1') or 0):.1f}")
+        print("   👉 In par ABHI limit/market entry ho sakti hai — VWAP hi entry zone hai.")
+        print("      Rule: VWAP hold kare (15m candle bounce) tab entry, tod de toh skip.")
+    else:
+        print("🎯 VWAP ZONE: abhi koi coin VWAP ke paas strong signal ke saath nahi hai.")
+        print("   (Sab ya toh bhaag chuke hain ya kamzor hain — pullback ka wait hi sahi.)")
+    print("🎯" * 20)
+
+
 
     print("\n🔴 SHORT side (sell/short setups):")
     print(hdr)
