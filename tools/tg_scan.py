@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Telegram — sirf PAKKA HIGH-confidence pick. Spam / weak setups nahi."""
+"""Telegram — PAKKA pick + CoinTrendz pump-channel auto scan."""
 import os
+import re
 import sys
 from datetime import datetime, timezone, timedelta
+from html import unescape
 
 import requests
 
@@ -150,7 +152,138 @@ def fmt_pakka(r):
     return "\n".join(lines)
 
 
+PUMP_CH = "cointrendz_pumpdetector"
+PUMP_PAGE = f"https://t.me/s/{PUMP_CH}"
+PUMP_WINDOW_MIN = 18  # 15-min cron ke saath naya post catch, duplicate kam
+
+
+def fetch_recent_pump():
+    """Public channel page se sabse naya pump coin, sirf agar abhi-abhi aaya ho."""
+    r = requests.get(PUMP_PAGE, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+    r.raise_for_status()
+    text = r.text
+    date_id = re.findall(
+        rf'tgme_widget_message_date.*?datetime="([^"]+)".*?t\.me/{PUMP_CH}/(\d+)',
+        text, re.S,
+    )
+    id_coin = []
+    seen = set()
+    for m in re.finditer(r"Pump</b>\s*-\s*([^/\s<]+)/USDT", text):
+        coin = unescape(m.group(1)).upper().strip()
+        chunk = text[max(0, m.start() - 2500): m.end() + 80]
+        ids = re.findall(rf"t\.me/{PUMP_CH}/(\d+)", chunk)
+        if not ids or not re.fullmatch(r"[A-Z0-9]{2,15}", coin):
+            continue
+        pid = int(ids[-1])
+        if pid in seen:
+            continue
+        seen.add(pid)
+        id_coin.append((pid, coin))
+    times = {int(i): dt for dt, i in date_id}
+    now = datetime.now(timezone.utc)
+    fresh = []
+    for pid, coin in id_coin:
+        raw = times.get(pid)
+        if not raw:
+            continue
+        try:
+            ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        age = (now - ts).total_seconds() / 60
+        if 0 <= age <= PUMP_WINDOW_MIN:
+            fresh.append((pid, coin, age))
+    fresh.sort(key=lambda x: x[0], reverse=True)
+    return fresh[0] if fresh else None
+
+
+def load_coin(coin):
+    for fn, src in (
+        (S.fetch_okx, "OKX"),
+        (S.fetch_gate, "Gate"),
+        (S.fetch_binance, "Binance"),
+        (S.fetch_mexc, "MEXC"),
+    ):
+        try:
+            d = fn(coin)
+        except Exception:
+            d = None
+        if d:
+            return d, src
+    return None, None
+
+
+def scan_one(coin):
+    d, src = load_coin(coin)
+    if not d:
+        return None
+    r = S.analyze(coin, d, src, with_cvd=False)
+    r["_src"] = src
+    enrich(r)
+    try:
+        cvd_t = (r.get("cvd") or (None, 0))[1]
+        r["field"] = S.battlefield(coin, src, r["price"], r["score"], cvd_t, None, None)
+    except Exception:
+        r["field"] = None
+    return r
+
+
+def fmt_channel_scan(r):
+    """Wahi 4 cheezein jo normal coin signal mein hoti hain."""
+    side = "🟢 BUY" if r["score"] > 0 else "🔴 SHORT" if r["score"] < 0 else "⚪ WAIT"
+    lines = [
+        f"📡 PUMP CHANNEL  {datetime.now(IST).strftime('%d %b %H:%M IST')}",
+        f"{side}  {r['coin']}/USDT  ·  {r['signal']}",
+        f"Price: {S.fmt_px(r['price'])}  ({r['chg24']:+.1f}%)",
+        f"🎖️ Confidence: {r.get('conf', 0):.0f}%  |  Score {r['score']:+d}",
+        "",
+        f"💰 Entry: {S.fmt_px(r['entry_lo'])} – {S.fmt_px(r['entry_hi'])}",
+        f"🛡️ SL: {S.fmt_px(r['sl'])}",
+        f"🎯 TP1: {S.fmt_px(r['tp1'])}  |  TP2: {S.fmt_px(r['tp2'])}",
+        f"🎲 CHANCE: TP1 ≈ {r['prob'][1]:.0f}%  |  TP2 ≈ {r['prob'][2]:.0f}%",
+    ]
+    fd = r.get("field")
+    if fd:
+        lines.append("")
+        if fd.get("ask_w"):
+            w = fd["ask_w"][0]
+            lines.append(
+                f"🔺 UPAR deewar: {S.fmt_px(w['px'])} pe ${w['usd']:,.0f} — toot ≈ {fd['ask_break']:.0f}%"
+            )
+        if fd.get("bid_w"):
+            w = fd["bid_w"][0]
+            lines.append(
+                f"🔻 NEECHE deewar: {S.fmt_px(w['px'])} pe ${w['usd']:,.0f} — toot ≈ {fd['bid_break']:.0f}%"
+            )
+        if fd.get("crowd_txt"):
+            lines.append(fd["crowd_txt"])
+    if abs(r.get("chg24") or 0) >= 6:
+        lines += ["", "⚠️ Channel ka PUMP alert — price hil chuka. Conf 72%+ na ho to WAIT."]
+    lines += ["", "📝 Exit sirf TP / SL. Size chhota. Risk aapka."]
+    return "\n".join(lines)
+
+
+def pump_watch():
+    try:
+        hit = fetch_recent_pump()
+    except Exception as e:
+        print("pump fetch fail", e)
+        return
+    if not hit:
+        print("pump: no fresh post")
+        return
+    pid, coin, age = hit
+    print(f"pump fresh {coin} id={pid} age={age:.1f}m")
+    r = scan_one(coin)
+    if not r:
+        send(f"{coin}: data nahi mila.")
+        return
+    send(fmt_channel_scan(r))
+    print("pump sent", coin)
+
+
 def main():
+    pump_watch()
     results, n = collect()
     elites = [r for r in results if is_elite(r)]
     print(f"scanned {n}, analyzed {len(results)}, elite-raw {len(elites)}")
