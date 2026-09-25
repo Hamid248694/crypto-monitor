@@ -892,6 +892,107 @@ def orderbook_balance(coin, source, zones):
     return res
 
 
+def battlefield(coin, source, price, score, cvd_trend=0, whales=None, vol24=None):
+    """Sabse badi deewar + tootne ka chance + crowd kis taraf le jaana chahti hai."""
+    bids = asks = None
+    try:
+        if str(source).startswith("Binance"):
+            r = SESSION.get("https://data-api.binance.vision/api/v3/depth",
+                            params={"symbol": f"{coin}USDT", "limit": 500}, timeout=12)
+            d = r.json()
+            if "bids" in d:
+                bids = [(float(x[0]), float(x[1])) for x in d["bids"]]
+                asks = [(float(x[0]), float(x[1])) for x in d["asks"]]
+        if bids is None and str(source).startswith("OKX"):
+            r = SESSION.get("https://www.okx.com/api/v5/market/books",
+                            params={"instId": f"{coin}-USDT", "sz": 400}, timeout=12)
+            j = r.json()
+            if j.get("code") == "0" and j.get("data"):
+                b = j["data"][0]
+                bids = [(float(x[0]), float(x[1])) for x in b["bids"]]
+                asks = [(float(x[0]), float(x[1])) for x in b["asks"]]
+        if bids is None:
+            r = SESSION.get("https://api.gateio.ws/api/v4/spot/order_book",
+                            params={"currency_pair": f"{coin}_USDT", "limit": 100},
+                            timeout=12)
+            d = r.json()
+            if "bids" in d:
+                bids = [(float(x[0]), float(x[1])) for x in d["bids"]]
+                asks = [(float(x[0]), float(x[1])) for x in d["asks"]]
+    except Exception:
+        return None
+    if not bids or not asks:
+        return None
+
+    def walls(levels, above=True):
+        sizes = [s for _, s in levels]
+        avg = (sum(sizes) / len(sizes)) if sizes else 1
+        out = []
+        for px, sz in levels:
+            if above and px <= price:
+                continue
+            if (not above) and px >= price:
+                continue
+            if sz < 5 * avg:
+                continue
+            out.append({"px": px, "sz": sz, "usd": px * sz, "x": sz / avg})
+        out.sort(key=lambda w: w["usd"], reverse=True)
+        return out[:2]
+
+    bid_w, ask_w = walls(bids, False), walls(asks, True)
+    bid_usd = sum(p * s for p, s in bids if p >= price * 0.97)
+    ask_usd = sum(p * s for p, s in asks if p <= price * 1.03)
+    book = bid_usd + ask_usd
+    bid_pct = (bid_usd / book * 100) if book else 50
+
+    def break_pct(wall, side):
+        if not wall:
+            return None
+        w = wall[0]["usd"]
+        base = 55
+        if vol24:
+            ratio = w / vol24
+            if ratio < 0.002:
+                base += 18
+            elif ratio < 0.01:
+                base += 8
+            elif ratio > 0.05:
+                base -= 15
+        if side == "up" and score >= 4:
+            base += 12
+        if side == "up" and score <= -3:
+            base -= 12
+        if side == "down" and score <= -4:
+            base += 12
+        if side == "down" and score >= 3:
+            base -= 12
+        if cvd_trend > 0 and side == "up":
+            base += 6
+        if cvd_trend < 0 and side == "down":
+            base += 6
+        return max(15, min(85, base))
+
+    crowd = 50 + score * 4 + (bid_pct - 50) * 0.4
+    if whales and whales.get("found"):
+        crowd += (whales["long_pct"] - 50) * 0.25
+        if whales.get("win_long_pct") is not None:
+            crowd += (whales["win_long_pct"] - 50) * 0.2
+    crowd = max(15, min(85, crowd))
+    if crowd >= 60:
+        crowd_txt = f"🟢 CROWD UPAR le jaana chahti hai (~{crowd:.0f}%)"
+    elif crowd <= 40:
+        crowd_txt = f"🔴 CROWD NEECHE le jaana chahti hai (~{100 - crowd:.0f}% down)"
+    else:
+        crowd_txt = f"⚪ CROWD mixed / jang (~{crowd:.0f}% up) — clear side nahi"
+    return {
+        "bid_w": bid_w, "ask_w": ask_w,
+        "bid_usd": bid_usd, "ask_usd": ask_usd, "bid_pct": bid_pct,
+        "ask_break": break_pct(ask_w, "up"),
+        "bid_break": break_pct(bid_w, "down"),
+        "crowd": crowd, "crowd_txt": crowd_txt,
+    }
+
+
 def perp_extras(coin):
     try:
         inst = f"{coin.upper()}-USDT-SWAP"
@@ -1039,6 +1140,27 @@ def print_report(res, fr, oi):
                     print(f"        └ {now_who}")
         print(f"     ℹ️  Jahan log BUY karke ghuse par price neeche hai = wo log phase hain (breakeven pe bechenge = resistance)")
 
+    fd = res.get("field")
+    if fd:
+        print(f"\n  🧱 BATTLEFIELD (sabse badi deewar + crowd kis taraf):")
+        if fd["ask_w"]:
+            w = fd["ask_w"][0]
+            br = fd["ask_break"]
+            print(f"     🔺 RESISTANCE deewar: {fmt_px(w['px'])} pe "
+                  f"${w['usd']:,.0f} ({w['x']:.0f}x avg) — tootne ka chance ≈ {br:.0f}%")
+        else:
+            print("     🔺 UPAR koi badi deewar nahi — raasta comparatively khali")
+        if fd["bid_w"]:
+            w = fd["bid_w"][0]
+            br = fd["bid_break"]
+            print(f"     🔻 SUPPORT deewar: {fmt_px(w['px'])} pe "
+                  f"${w['usd']:,.0f} ({w['x']:.0f}x avg) — tootne ka chance ≈ {br:.0f}%")
+        else:
+            print("     🔻 NEECHE koi badi deewar nahi — support patla")
+        print(f"     📖 Book (3% range): buyers ${fd['bid_usd']:,.0f} "
+              f"({fd['bid_pct']:.0f}%) vs sellers ${fd['ask_usd']:,.0f}")
+        print(f"     {fd['crowd_txt']}")
+
     print(f"\n  🎯 LEVELS:")
     print(f"     Support   : {fmt_px(res['support'])}")
     print(f"     Resistance: {fmt_px(res['resistance'])}")
@@ -1099,6 +1221,13 @@ def main():
     res["btc_bias"] = btc_bias() if coin != "BTC" else None
     res["confidence"] = confidence_engine(res, res["htf"], res["btc_bias"],
                                           res["whales"])
+    try:
+        cvd_t = (res.get("cvd") or (None, 0))[1]
+        res["field"] = battlefield(coin, source, res["price"], res["score"],
+                                   cvd_t, res.get("whales"),
+                                   float(data["ticker"].get("volCcy24h") or 0) or None)
+    except Exception:
+        res["field"] = None
     fr, oi = (perp_extras(coin) if args.perp else (None, None))
     print_report(res, fr, oi)
 
